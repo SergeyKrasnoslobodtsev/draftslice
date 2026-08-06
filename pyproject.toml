@@ -9,27 +9,9 @@ dependencies = [
     "numpy>=2.2.6",
     "opencv-python-headless>=4.13.0.92",
     "scikit-image>=0.25.2",
-    "paddlepaddle-gpu==3.3.1 ; sys_platform == 'linux'",
-    "paddlepaddle==3.2.0 ; sys_platform == 'win32'",
     "onnxruntime-gpu==1.23.0 ; sys_platform == 'linux'",
     "onnxruntime==1.23.0 ; sys_platform == 'win32'",
-    "paddleocr>=3.7.0",
-    "transformers>=5.12.1",
 ]
-
-[tool.uv.sources]
-paddlepaddle-gpu = { index = "paddlepaddle-gpu" }
-paddlepaddle = { index = "paddlepaddle-cpu" }
-
-[[tool.uv.index]]
-name = "paddlepaddle-gpu"
-url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
-explicit = true
-
-[[tool.uv.index]]
-name = "paddlepaddle-cpu"
-url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
-explicit = true
 
 [dependency-groups]
 dev = [
