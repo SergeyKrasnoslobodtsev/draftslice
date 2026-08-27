@@ -62,11 +62,19 @@ class PipelineParameters:
         Размер группы, начиная с которого компоненты считаются шаблонными.
     twig_length_share : float
         Доля длины компоненты, ниже которой висячее ребро срезается.
+    text_size_quantile : float
+        Квантиль по габаритам кусков текстовой области: 0.5 медиана, 1.0 максимум.
+    text_size_tolerance : float
+        Множитель к характерному габариту текста, ноль отключает правило.
+    enclosed_inside_share : float
+        Доля пикселей компоненты внутри контура детали, при которой она считается вложенной.
+    host_area_share : float
+        Доля от наибольшей внутренней площади, начиная с которой контур считается телом детали.
     """
 
     detector_scales: tuple[int, ...] = (320, 640, 2000)
-    text_binary_threshold: float = 0.30
-    text_box_threshold: float = 0.40
+    text_binary_threshold: float = 0.50
+    text_box_threshold: float = 0.60
     text_minimum_short_side: float = 3.0
     text_unclip_ratio: float = 1.5
 
@@ -89,3 +97,8 @@ class PipelineParameters:
     repeat_tolerance: float = 0.05
     minimum_repeat_count: int = 3
     twig_length_share: float = 0.05
+
+    text_size_quantile: float = 0.5
+    text_size_tolerance: float = 1.0
+    enclosed_inside_share: float = 0.9
+    host_area_share: float = 0.2
