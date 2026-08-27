@@ -11,14 +11,17 @@
 соседние параллельные линии.
 """
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 import cv2
 import numpy as np
+import pandas as pd
 
 from draftslice.chain_merging import StrokeChains
 from draftslice.common_types import Floats, Ints, Mask
+from draftslice.features import ComponentFeatures
 from draftslice.morphology_closing import fill_internal_holes
+from draftslice.pipeline import PipelineArtifacts
 from draftslice.stroke_graph import (
     CYCLE_BRANCH,
     ISOLATED_BRANCH,
@@ -260,4 +263,202 @@ def measure_thickness_class_metrics(chains: StrokeChains, classes: ThicknessClas
         chain_counts=chain_counts,
         length_shares=length_shares,
         unclassified_count=int((~classified).sum()),
+    )
+
+
+def build_component_feature_table(features: ComponentFeatures) -> pd.DataFrame:
+    """Собрать таблицу признаков компонент для печати.
+
+    Parameters
+    ----------
+    features : ComponentFeatures
+        Признаки компонент.
+
+    Returns
+    -------
+    pd.DataFrame
+        Таблица, отсортированная по убыванию длины.
+
+    Notes
+    -----
+    DataFrame используется только как способ печати: расчеты идут по массивам, а здесь собирается
+    представление для глаз.
+    """
+    table = pd.DataFrame(
+        {
+            "id": features.component_id,
+            "ребер": features.path_count,
+            "длина": features.axis_length.round(0),
+            "габарит": features.bounding_diagonal.round(0),
+            "извил": features.tortuosity.round(2),
+            "толщина": features.median_thickness.round(1),
+            "разброс t": features.thickness_spread.round(2),
+            "внутри": features.inside_area,
+            "текст": features.inside_text_share.round(2),
+            "хвостов": features.twig_count,
+            "доля хвостов": features.twig_length_share.round(2),
+            "длиннейший хвост": features.longest_twig_length.round(0),
+        }
+    )
+    return table.sort_values("длина", ascending=False)
+
+
+@dataclass(frozen=True)
+class PipelineRow:
+    """Сводка одного прогона для таблицы по датасету.
+
+    Attributes
+    ----------
+    name : str
+        Имя файла без расширения.
+    source_long_side : int
+        Длинная сторона исходника в пикселях.
+    text_share : float
+        Доля кадра под маской текста.
+    strokes_ink_share : float
+        Доля чернил после бинаризации.
+    strokes_spur_ratio : float
+        Доля шпор среди ребер первого графа, признак разорванного контура.
+    class_edge : float
+        Первая граница классов толщины в пикселях.
+    clean_ink_share : float
+        Доля чернил, оставшаяся после отбора по толщине.
+    closing_kernel_length : int
+        Длина ядра замыкания.
+    closed_piece_drop : int
+        На сколько замыкание уменьшило число кусков маски.
+    closed_hole_growth : int
+        На сколько замыкание увеличило число замкнутых пустот.
+    closed_spur_ratio : float
+        Доля шпор среди ребер второго графа.
+    component_count : int
+        Число компонент замкнутого графа.
+    kept_component_count : int
+        Сколько компонент прошло правила.
+    part_ink_share : float
+        Доля чернил в итоговой маске от бинаризации.
+    part_piece_count : int
+        Число кусков итоговой маски.
+    largest_component_length : float
+        Длина осей самой длинной компоненты.
+    """
+
+    name: str
+    source_long_side: int
+    text_share: float
+    strokes_ink_share: float
+    strokes_spur_ratio: float
+    class_edge: float
+    clean_ink_share: float
+    closing_kernel_length: int
+    closed_piece_drop: int
+    closed_hole_growth: int
+    closed_spur_ratio: float
+    component_count: int
+    kept_component_count: int
+    part_ink_share: float
+    part_piece_count: int
+    largest_component_length: float
+
+
+def spur_ratio(metrics: GraphMetrics) -> float:
+    """Доля шпор среди ребер графа.
+
+    Parameters
+    ----------
+    metrics : GraphMetrics
+        Метрики графа.
+
+    Returns
+    -------
+    float
+        Отношение числа шпор к числу ребер.
+
+    Notes
+    -----
+    Чем выше доля, тем сильнее разорван контур: куски разорванной линии получают свободные концы и
+    попадают в шпоры вместо ребер узел-узел.
+    """
+    return metrics.spur_count / max(metrics.path_count, 1)
+
+
+def measure_pipeline_row(name: str, source_long_side: int, artifacts: PipelineArtifacts) -> PipelineRow:
+    """Свести один прогон в строку таблицы.
+
+    Parameters
+    ----------
+    name : str
+        Имя файла без расширения.
+    source_long_side : int
+        Длинная сторона исходника в пикселях.
+    artifacts : PipelineArtifacts
+        Результаты прогона.
+
+    Returns
+    -------
+    PipelineRow
+        Строка сводной таблицы.
+    """
+    clean_metrics = measure_mask_metrics(artifacts.clean_mask)
+    closed_metrics = measure_mask_metrics(artifacts.closed_mask)
+    part_metrics = measure_mask_metrics(artifacts.part_mask)
+    strokes_graph_metrics = measure_graph_metrics(artifacts.strokes_graph)
+    closed_graph_metrics = measure_graph_metrics(artifacts.closed_graph)
+
+    kept_components = np.unique(artifacts.features.path_component[artifacts.final_paths])
+    return PipelineRow(
+        name=name,
+        source_long_side=source_long_side,
+        text_share=float(artifacts.text_region_mask.mean()),
+        strokes_ink_share=float(artifacts.strokes_mask.mean()),
+        strokes_spur_ratio=spur_ratio(strokes_graph_metrics),
+        class_edge=float(artifacts.thickness_classes.edges[0])
+        if len(artifacts.thickness_classes.edges)
+        else float("nan"),
+        clean_ink_share=float(artifacts.clean_mask.sum() / max(artifacts.strokes_mask.sum(), 1)),
+        closing_kernel_length=artifacts.closing_kernel_length,
+        closed_piece_drop=clean_metrics.component_count - closed_metrics.component_count,
+        closed_hole_growth=closed_metrics.hole_count - clean_metrics.hole_count,
+        closed_spur_ratio=spur_ratio(closed_graph_metrics),
+        component_count=len(artifacts.features),
+        kept_component_count=len(kept_components),
+        part_ink_share=float(artifacts.part_mask.sum() / max(artifacts.strokes_mask.sum(), 1)),
+        part_piece_count=part_metrics.component_count,
+        largest_component_length=float(artifacts.features.axis_length.max()) if len(artifacts.features) else 0.0,
+    )
+
+
+def build_dataset_table(rows: list[PipelineRow]) -> pd.DataFrame:
+    """Собрать таблицу прогонов по датасету.
+
+    Parameters
+    ----------
+    rows : list[PipelineRow]
+        Строки прогонов.
+
+    Returns
+    -------
+    pd.DataFrame
+        Таблица с читаемыми заголовками.
+    """
+    table = pd.DataFrame([asdict(row) for row in rows])
+    return table.rename(
+        columns={
+            "name": "файл",
+            "source_long_side": "сторона",
+            "text_share": "текст",
+            "strokes_ink_share": "чернил",
+            "strokes_spur_ratio": "шпор до",
+            "class_edge": "граница t",
+            "clean_ink_share": "после толщины",
+            "closing_kernel_length": "ядро",
+            "closed_piece_drop": "кусков ушло",
+            "closed_hole_growth": "пустот выросло",
+            "closed_spur_ratio": "шпор после",
+            "component_count": "компонент",
+            "kept_component_count": "оставлено",
+            "part_ink_share": "итог чернил",
+            "part_piece_count": "итог кусков",
+            "largest_component_length": "длиннейшая",
+        }
     )
