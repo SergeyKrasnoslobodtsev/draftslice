@@ -26,5 +26,11 @@ Floats = npt.NDArray[np.float64]
 Ints = npt.NDArray[np.int64]
 """Целочисленные индексы и метки."""
 
+FloatMap = npt.NDArray[np.float32]
+"""Вещественная карта размером с кадр. Одинарной точности: такие карты занимают сотни мегабайт."""
+
+IntMap = npt.NDArray[np.int32]
+"""Целочисленная карта размером с кадр, хранит номера ребер или компонент."""
+
 Window = tuple[float, float, float, float]
 """Окно просмотра в пикселях: x_left, x_right, y_top, y_bottom."""
