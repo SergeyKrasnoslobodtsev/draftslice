@@ -19,8 +19,12 @@ from draftslice.features import (
     ComponentFeatures,
     build_component_features,
     expand_selection_to_paths,
+    find_enclosed_components,
+    find_host_contours,
     find_repeated_components,
+    find_text_sized_components,
     group_similar_components,
+    measure_text_component_scale,
     select_components,
     trim_short_twigs,
 )
@@ -149,13 +153,22 @@ def build_clean_mask(
     return paint_selected_paths(graph, kept_paths, strokes_mask, parameters.radius_tolerance)
 
 
-def select_part_paths(features: ComponentFeatures, parameters: PipelineParameters) -> Mask:
+def select_part_paths(
+    graph: StrokeGraph,
+    features: ComponentFeatures,
+    text_region_mask: Mask,
+    parameters: PipelineParameters,
+) -> Mask:
     """Отобрать ребра, относящиеся к детали, по правилам для компонент.
 
     Parameters
     ----------
+    graph : StrokeGraph
+        Граф скелета замкнутой маски.
     features : ComponentFeatures
         Признаки компонент.
+    text_region_mask : Mask
+        Маска текстовой области, задает масштаб шрифта на листе.
     parameters : PipelineParameters
         Параметры пайплайна.
 
@@ -163,6 +176,14 @@ def select_part_paths(features: ComponentFeatures, parameters: PipelineParameter
     -------
     Mask
         Маска ребер, прошедших правила.
+
+    Notes
+    -----
+    Правила накладываются последовательно: сначала отбор по форме, затем снятие повторяющихся
+    шаблонов, затем снятие компонент размера текста. Последнее правило не применяется к тому, что
+    лежит внутри большого контура: отверстия и обозначения внутри тела по размеру неотличимы от
+    надписей. Внутренности мелких замкнутых объектов вроде рамки допуска это не касается, там как
+    раз текст и находится.
     """
     kept_components = select_components(
         features,
@@ -173,7 +194,11 @@ def select_part_paths(features: ComponentFeatures, parameters: PipelineParameter
     )
     groups = group_similar_components(features, parameters.repeat_tolerance)
     repeated = find_repeated_components(features, groups, parameters.minimum_repeat_count)
-    return expand_selection_to_paths(features, kept_components & ~repeated)
+    text_scale = measure_text_component_scale(text_region_mask, parameters.text_size_quantile)
+    text_sized = find_text_sized_components(features, text_scale, parameters.text_size_tolerance)
+    hosts = find_host_contours(features, parameters.host_area_share)
+    enclosed = find_enclosed_components(graph, features, hosts, parameters.enclosed_inside_share)
+    return expand_selection_to_paths(features, kept_components & ~repeated & ~(text_sized & ~enclosed))
 
 
 def run_pipeline(
@@ -215,7 +240,7 @@ def run_pipeline(
     closed_graph = build_stroke_graph(closed_mask, scaled_text_region)
     all_paths = np.ones(closed_graph.path_count, dtype=bool)
     features = build_component_features(closed_graph, all_paths, scaled_text_region)
-    kept_paths = select_part_paths(features, parameters)
+    kept_paths = select_part_paths(closed_graph, features, scaled_text_region, parameters)
     final_paths = trim_short_twigs(closed_graph, kept_paths, features.path_component, parameters.twig_length_share)
     part_mask = paint_selected_paths(closed_graph, final_paths, strokes.strokes_mask, parameters.radius_tolerance)
 
