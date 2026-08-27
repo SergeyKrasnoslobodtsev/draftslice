@@ -24,7 +24,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-from draftslice.common_types import Floats, Ints, Mask
+from draftslice.common_types import FloatMap, Floats, IntMap, Ints, Mask
 from draftslice.morphology_closing import fill_internal_holes
 from draftslice.stroke_graph import (
     StrokeGraph,
@@ -123,7 +123,7 @@ class ComponentFeatures:
         return len(self.component_id)
 
 
-def build_component_axis_image(graph: StrokeGraph, alive_paths: Mask, path_component: Ints) -> Ints:
+def build_component_axis_image(graph: StrokeGraph, alive_paths: Mask, path_component: Ints) -> IntMap:
     """Построить карту пикселей осей в номера компонент.
 
     Parameters
@@ -137,17 +137,17 @@ def build_component_axis_image(graph: StrokeGraph, alive_paths: Mask, path_compo
 
     Returns
     -------
-    Ints
+    IntMap
         Карта номеров компонент на пикселях осей, минус единица вне осей.
     """
-    axis_image = np.full(graph.path_id_image.shape, -1, dtype=np.int64)
+    axis_image = np.full(graph.path_id_image.shape, -1, dtype=np.int32)
     on_axis = (graph.path_id_image >= 0) & alive_paths[np.maximum(graph.path_id_image, 0)]
     axis_image[on_axis] = path_component[graph.path_id_image[on_axis]]
     return axis_image
 
 
 def measure_component_shape(
-    component_id: int, rows: Ints, cols: Ints, distance_map: Floats, text_region_mask: Mask
+    component_id: int, rows: Ints, cols: Ints, distance_map: FloatMap, text_region_mask: Mask
 ) -> ComponentShape:
     """Снять пиксельные признаки компоненты в ее габарите.
 
@@ -157,7 +157,7 @@ def measure_component_shape(
         Номер компоненты.
     rows, cols : Ints
         Координаты пикселей оси компоненты.
-    distance_map : Floats
+    distance_map : FloatMap
         Distance transform маски штрихов.
     text_region_mask : Mask
         Маска текстовой области.
