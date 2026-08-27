@@ -2,9 +2,17 @@
 
 import cv2
 import numpy as np
-from stage_metrics import measure_graph_metrics, measure_mask_metrics
+import pytest
+from stage_metrics import (
+    measure_chain_metrics,
+    measure_graph_metrics,
+    measure_mask_metrics,
+    measure_thickness_class_metrics,
+)
 
+from draftslice.chain_merging import ChainMergeParameters, build_stroke_chains
 from draftslice.stroke_graph import build_stroke_graph
+from draftslice.thickness_classes import fit_thickness_classes
 
 
 def test_mask_metrics_count_pieces_and_holes() -> None:
@@ -50,3 +58,38 @@ def test_graph_metrics_count_text_paths() -> None:
 
     assert metrics.path_count == 2
     assert metrics.text_path_count == 1
+
+
+def test_chain_metrics_report_merge_result() -> None:
+    canvas = np.zeros((160, 400), np.uint8)
+    cv2.line(canvas, (20, 80), (380, 80), 1, 3)
+    cv2.line(canvas, (200, 80), (200, 150), 1, 3)
+    mask = canvas.astype(bool)
+
+    graph = build_stroke_graph(mask, np.zeros_like(mask))
+    chains = build_stroke_chains(graph, ChainMergeParameters())
+    metrics = measure_chain_metrics(chains)
+
+    assert metrics.chain_count == 2
+    assert metrics.linked_path_count == 3
+    assert metrics.links_per_chain == pytest.approx(1.5)
+    assert metrics.maximum_length > 350.0
+    assert metrics.text_chain_count == 0
+
+
+def test_thickness_class_metrics_split_length_between_classes() -> None:
+    canvas = np.zeros((320, 400), np.uint8)
+    for row in (40, 80, 120):
+        cv2.line(canvas, (20, row), (380, row), 1, 3)
+    for row in (200, 240, 280):
+        cv2.line(canvas, (20, row), (380, row), 1, 11)
+    mask = canvas.astype(bool)
+
+    graph = build_stroke_graph(mask, np.zeros_like(mask))
+    chains = build_stroke_chains(graph, ChainMergeParameters())
+    classes = fit_thickness_classes(chains, class_count=2)
+    metrics = measure_thickness_class_metrics(chains, classes)
+
+    assert metrics.chain_counts.tolist() == [3, 3]
+    assert metrics.length_shares.sum() == pytest.approx(1.0)
+    assert metrics.unclassified_count == 0
