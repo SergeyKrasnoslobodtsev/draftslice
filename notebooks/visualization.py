@@ -14,6 +14,7 @@ from matplotlib.collections import LineCollection
 
 from draftslice.chain_merging import StrokeChains
 from draftslice.common_types import Floats, Ints, Mask, Mat, Window
+from draftslice.features import ComponentFeatures
 from draftslice.stroke_graph import (
     CYCLE_BRANCH,
     ISOLATED_BRANCH,
@@ -409,3 +410,184 @@ def draw_thickness_classes(
     axes = create_view_axes(background_image, window, title)
     draw_graph_paths(axes, graph, chains.path_indices, chain_colors, line_width=1.6, z_order=3)
     plt.show()
+
+
+ADDED_PIXEL_COLOR = (0, 0, 255)
+"""Цвет пикселей, добавленных замыканием, в BGR."""
+
+
+def draw_closing_result(before_mask: Mask, after_mask: Mask, title: str) -> None:
+    """Показать, что добавило замыкание, и результат рядом.
+
+    Parameters
+    ----------
+    before_mask : Mask
+        Маска до замыкания.
+    after_mask : Mask
+        Маска после замыкания.
+    title : str
+        Заголовок правой панели.
+    """
+    canvas = np.full((*before_mask.shape, 3), 255, np.uint8)
+    canvas[before_mask] = (0, 0, 0)
+    canvas[after_mask & ~before_mask] = ADDED_PIXEL_COLOR
+
+    _, (left_axes, right_axes) = plt.subplots(1, 2, figsize=(20, 8))
+    left_axes.imshow(canvas[..., ::-1])
+    left_axes.set_title("красное это добавленные пиксели")
+    right_axes.imshow(np.where(after_mask, 0, 255).astype(np.uint8), cmap="gray")
+    right_axes.set_title(title)
+    for axes in (left_axes, right_axes):
+        axes.axis("off")
+    plt.show()
+
+
+def draw_component_selection(
+    graph: StrokeGraph,
+    features: ComponentFeatures,
+    kept_paths: Mask,
+    background_image: Mat,
+    window: Window,
+    title: str,
+    label_length_limit: float = 0.0,
+) -> None:
+    """Показать решение по компонентам: зеленое остается, красное уходит.
+
+    Parameters
+    ----------
+    graph : StrokeGraph
+        Граф скелета.
+    features : ComponentFeatures
+        Признаки компонент.
+    kept_paths : Mask
+        Маска сохраненных ребер.
+    background_image : Mat
+        Кадр-подложка.
+    window : Window
+        Границы окна просмотра.
+    title : str
+        Заголовок.
+    label_length_limit : float
+        Подписывать номера компонент, чья длина не меньше этого значения. Ноль отключает подписи.
+    """
+    axes = create_view_axes(background_image, window, title)
+    draw_graph_paths(
+        axes, graph, np.flatnonzero(kept_paths), "green", z_order=3, label=f"остается: {int(kept_paths.sum())}"
+    )
+    draw_graph_paths(
+        axes, graph, np.flatnonzero(~kept_paths), "red", z_order=4, label=f"уходит: {int((~kept_paths).sum())}"
+    )
+
+    if label_length_limit > 0:
+        for component_id, axis_length in zip(features.component_id, features.axis_length, strict=True):
+            if axis_length < label_length_limit:
+                continue
+            member_paths = np.flatnonzero(features.path_component == component_id)
+            first_point = graph.path_points(int(member_paths[0]))[0]
+            axes.text(first_point[0], first_point[1], str(int(component_id)), fontsize=9, color="black")
+    axes.legend(loc="upper right", fontsize=8)
+    plt.show()
+
+
+def draw_trimmed_twigs(
+    graph: StrokeGraph,
+    dropped_paths: Mask,
+    trimmed_paths: Mask,
+    kept_paths: Mask,
+    background_image: Mat,
+    window: Window,
+    title: str,
+) -> None:
+    """Показать итог отбора: что осталось, что убрано правилом и что срезано хвостами.
+
+    Parameters
+    ----------
+    graph : StrokeGraph
+        Граф скелета.
+    dropped_paths : Mask
+        Ребра, убранные правилом по компонентам.
+    trimmed_paths : Mask
+        Ребра, срезанные как хвосты.
+    kept_paths : Mask
+        Ребра, оставшиеся в итоге.
+    background_image : Mat
+        Кадр-подложка.
+    window : Window
+        Границы окна просмотра.
+    title : str
+        Заголовок.
+    """
+    axes = create_view_axes(background_image, window, title)
+    layers = (
+        (kept_paths, "green", 3, "остается"),
+        (dropped_paths, "red", 4, "убрано правилом"),
+        (trimmed_paths, "orange", 5, "срезано хвостами"),
+    )
+    for mask, color, z_order, name in layers:
+        selected = np.flatnonzero(mask)
+        draw_graph_paths(axes, graph, selected, color, z_order=z_order, label=f"{name}: {len(selected)}")
+    axes.legend(loc="upper right", fontsize=8)
+    plt.show()
+
+
+def show_before_after_list(
+    before_masks: list[Mask], after_masks: list[Mask], titles: list[str], row_height: float = 3.4
+) -> None:
+    """Показать пары было и стало, по строке на файл.
+
+    Parameters
+    ----------
+    before_masks : list[Mask]
+        Маски до очистки.
+    after_masks : list[Mask]
+        Маски после очистки, того же порядка.
+    titles : list[str]
+        Подписи строк.
+    row_height : float
+        Высота одной строки в дюймах.
+
+    Notes
+    -----
+    Маска результата сама по себе выглядит правдоподобно даже тогда, когда из детали вырезан кусок.
+    Сравнение с исходными штрихами показывает, что именно удалено.
+    """
+    figure, axes_grid = plt.subplots(len(titles), 2, figsize=(13, len(titles) * row_height))
+    grid = np.atleast_2d(axes_grid)
+    for row_index, (before_mask, after_mask, title) in enumerate(zip(before_masks, after_masks, titles, strict=True)):
+        for column_index, (mask, name) in enumerate(((before_mask, "было"), (after_mask, "стало"))):
+            axes = grid[row_index, column_index]
+            axes.imshow(np.where(mask, 0, 255).astype(np.uint8), cmap="gray")
+            axes.set_title(f"{title}, {name}", fontsize=9)
+            axes.axis("off")
+    figure.tight_layout()
+    plt.show()
+
+
+def shrink_mask_for_preview(mask: Mask, long_side: int = 900) -> Mask:
+    """Уменьшить маску до размера, пригодного для галереи.
+
+    Parameters
+    ----------
+    mask : Mask
+        Исходная маска.
+    long_side : int
+        Требуемый размер длинной стороны в пикселях.
+
+    Returns
+    -------
+    Mask
+        Уменьшенная маска.
+
+    Notes
+    -----
+    Нужна для прогона по датасету: держать в памяти полноразмерные маски всех файлов нельзя, кадр в
+    двадцать мегапикселей после рабочего масштабирования дает сотни мегабайт на файл.
+    """
+    current_side = max(mask.shape[:2])
+    if current_side <= long_side:
+        return mask
+
+    factor = long_side / current_side
+    width = max(1, int(mask.shape[1] * factor))
+    height = max(1, int(mask.shape[0] * factor))
+    return cv2.resize(mask.astype(np.uint8), (width, height), interpolation=cv2.INTER_AREA) > 0
