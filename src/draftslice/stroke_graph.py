@@ -22,7 +22,7 @@ from scipy.sparse.csgraph import connected_components
 from skan import Skeleton, summarize
 from skimage.morphology import skeletonize
 
-from draftslice.common_types import Floats, Ints, Mask
+from draftslice.common_types import FloatMap, Floats, IntMap, Ints, Mask
 
 ISOLATED_BRANCH = 0
 """Ребро между двумя свободными концами."""
@@ -45,9 +45,9 @@ class StrokeGraph:
     ----------
     skeleton : Skeleton
         Разбиение скелета на ребра, объект skan.
-    distance_map : Floats
+    distance_map : FloatMap
         Distance transform маски штрихов, половина локальной ширины в каждой точке.
-    path_id_image : Ints
+    path_id_image : IntMap
         Карта пикселей скелета в номер ребра, минус единица вне скелета.
     thickness : Floats
         Толщина каждого ребра в пикселях.
@@ -66,8 +66,8 @@ class StrokeGraph:
     """
 
     skeleton: Skeleton
-    distance_map: Floats
-    path_id_image: Ints
+    distance_map: FloatMap
+    path_id_image: IntMap
     thickness: Floats
     length: Floats
     pixel_count: Ints
@@ -137,14 +137,14 @@ def median_by_group(values: Floats, group_labels: Ints, group_count: int) -> Flo
     return medians
 
 
-def measure_path_thickness(skeleton: Skeleton, distance_map: Floats, trim_share: float = 0.25) -> Floats:
+def measure_path_thickness(skeleton: Skeleton, distance_map: FloatMap, trim_share: float = 0.25) -> Floats:
     """Измерить толщину каждого ребра по срединной части его оси.
 
     Parameters
     ----------
     skeleton : Skeleton
         Разбиение скелета на ребра.
-    distance_map : Floats
+    distance_map : FloatMap
         Distance transform маски штрихов.
     trim_share : float
         Доля длины, отбрасываемая с каждого конца ребра.
@@ -170,7 +170,7 @@ def measure_path_thickness(skeleton: Skeleton, distance_map: Floats, trim_share:
     return median_by_group(widths[inner], path_labels[inner], skeleton.n_paths)
 
 
-def build_path_id_image(skeleton: Skeleton, shape: tuple[int, int]) -> Ints:
+def build_path_id_image(skeleton: Skeleton, shape: tuple[int, int]) -> IntMap:
     """Построить карту пикселей скелета в номера ребер.
 
     Parameters
@@ -182,10 +182,10 @@ def build_path_id_image(skeleton: Skeleton, shape: tuple[int, int]) -> Ints:
 
     Returns
     -------
-    Ints
+    IntMap
         Карта номеров ребер, минус единица вне скелета.
     """
-    path_ids = np.full(shape, -1, dtype=np.int64)
+    path_ids = np.full(shape, -1, dtype=np.int32)
     coordinates = skeleton.coordinates[skeleton.paths.indices].astype(int)
     path_ids[coordinates[:, 0], coordinates[:, 1]] = np.repeat(
         np.arange(skeleton.n_paths), np.diff(skeleton.paths.indptr)
@@ -193,19 +193,19 @@ def build_path_id_image(skeleton: Skeleton, shape: tuple[int, int]) -> Ints:
     return path_ids
 
 
-def build_owner_image(path_id_image: Ints, strokes_mask: Mask) -> Ints:
+def build_owner_image(path_id_image: IntMap, strokes_mask: Mask) -> IntMap:
     """Отнести каждый пиксель штриха к ближайшему ребру скелета.
 
     Parameters
     ----------
-    path_id_image : Ints
+    path_id_image : IntMap
         Карта пикселей скелета в номера ребер.
     strokes_mask : Mask
         Маска штрихов.
 
     Returns
     -------
-    Ints
+    IntMap
         Номер ребра для каждого пикселя штриха, минус единица вне штрихов.
 
     Notes
@@ -218,9 +218,9 @@ def build_owner_image(path_id_image: Ints, strokes_mask: Mask) -> Ints:
         (path_id_image < 0).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE, labelType=cv2.DIST_LABEL_PIXEL
     )
     on_skeleton = path_id_image >= 0
-    lookup = np.full(int(labels.max()) + 1, -1, dtype=np.int64)
+    lookup = np.full(int(labels.max()) + 1, -1, dtype=np.int32)
     lookup[labels[on_skeleton]] = path_id_image[on_skeleton]
-    return np.where(strokes_mask, lookup[labels], -1)
+    return np.where(strokes_mask, lookup[labels], -1).astype(np.int32)
 
 
 def measure_path_text_share(skeleton: Skeleton, text_region_mask: Mask) -> Floats:
@@ -264,9 +264,7 @@ def build_stroke_graph(strokes_mask: Mask, text_region_mask: Mask) -> StrokeGrap
         raise ValueError(f"размеры масок не совпадают: {strokes_mask.shape} и {text_region_mask.shape}")
 
     skeleton_mask = skeletonize(strokes_mask)
-    distance_map = cv2.distanceTransform(
-        strokes_mask.astype(np.uint8) * 255, cv2.DIST_L2, cv2.DIST_MASK_PRECISE
-    ).astype(np.float64)
+    distance_map = cv2.distanceTransform(strokes_mask.astype(np.uint8) * 255, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
 
     skeleton = Skeleton(skeleton_mask)
     summary = summarize(skeleton, separator="-")
