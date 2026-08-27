@@ -20,6 +20,7 @@
 
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
@@ -342,6 +343,145 @@ def find_repeated_components(features: ComponentFeatures, groups: Ints, minimum_
     """
     group_size = np.bincount(groups)
     return (group_size[groups] >= minimum_repeat_count) & (features.inside_area == 0)
+
+
+def measure_text_component_scale(text_region_mask: Mask, size_quantile: float = 0.5) -> float:
+    """Измерить характерный габарит куска текстовой области.
+
+    Parameters
+    ----------
+    text_region_mask : Mask
+        Маска текстовой области.
+    size_quantile : float
+        Квантиль по габаритам кусков: 0.5 дает медианный кусок, 1.0 самый крупный.
+
+    Returns
+    -------
+    float
+        Диагональ габарита выбранного куска в пикселях, ноль если текста нет.
+
+    Notes
+    -----
+    Детектор находит не весь текст, но найденное задает масштаб шрифта на листе. Куски маски крупнее
+    отдельных букв, потому что маска собрана из раздутых ядер и склеивает символы в надписи, поэтому
+    сравнение с ней дает запас в пользу сохранения детали.
+    """
+    component_count, _, stats, _ = cv2.connectedComponentsWithStats(text_region_mask.astype(np.uint8), connectivity=8)
+    if component_count <= 1:
+        return 0.0
+
+    widths = stats[1:, cv2.CC_STAT_WIDTH].astype(np.float64)
+    heights = stats[1:, cv2.CC_STAT_HEIGHT].astype(np.float64)
+    return float(np.quantile(np.hypot(widths, heights), size_quantile))
+
+
+def find_host_contours(features: ComponentFeatures, minimum_area_share: float = 0.2) -> Mask:
+    """Найти большие контуры, внутренность которых считается телом детали.
+
+    Parameters
+    ----------
+    features : ComponentFeatures
+        Признаки компонент.
+    minimum_area_share : float
+        Доля от наибольшей внутренней площади в кадре, начиная с которой контур считается большим.
+
+    Returns
+    -------
+    Mask
+        Маска компонент, признанных телом детали.
+
+    Notes
+    -----
+    Порог относительный, потому что абсолютная площадь зависит от разрешения листа. Разрыв между
+    телом детали и мелкими замкнутыми объектами вроде рамки допуска или кружка позиции составляет
+    порядки, поэтому доля не требует подбора под кадр. Абсолютный порог тут был бы ошибкой: рамка
+    допуска замкнута и по площади проходит любой разумный абсолютный порог, а текст находится именно
+    внутри нее.
+    """
+    if not len(features):
+        return np.zeros(0, dtype=bool)
+
+    largest_area = float(features.inside_area.max())
+    if largest_area <= 0:
+        return np.zeros(len(features), dtype=bool)
+    return features.inside_area >= minimum_area_share * largest_area
+
+
+def find_enclosed_components(
+    graph: StrokeGraph,
+    features: ComponentFeatures,
+    host_components: Mask,
+    minimum_inside_share: float = 0.9,
+) -> Mask:
+    """Найти компоненты, лежащие внутри контура компонент-хозяев.
+
+    Parameters
+    ----------
+    graph : StrokeGraph
+        Граф скелета.
+    features : ComponentFeatures
+        Признаки компонент.
+    host_components : Mask
+        Маска компонент, внутренность которых считается телом детали.
+    minimum_inside_share : float
+        Доля пикселей компоненты, которая должна попасть внутрь, чтобы счесть ее вложенной.
+
+    Returns
+    -------
+    Mask
+        Маска компонент, лежащих внутри хозяев.
+
+    Notes
+    -----
+    Нужна как защита: отверстие, канавка или обозначение внутри детали по размеру совпадают с
+    надписью и с повторяющимся шаблоном, поэтому размерные правила про них ошибаются. Вложенность
+    определяется по залитой внутренности осей хозяев, сами хозяева в результат не попадают.
+    """
+    host_paths = expand_selection_to_paths(features, host_components)
+    host_axes = (graph.path_id_image >= 0) & host_paths[np.maximum(graph.path_id_image, 0)]
+    if not host_axes.any():
+        return np.zeros(len(features), dtype=bool)
+
+    interior = fill_internal_holes(host_axes) & ~host_axes
+    axis_image = build_component_axis_image(graph, np.ones(graph.path_count, dtype=bool), features.path_component)
+    rows, cols = np.nonzero(axis_image >= 0)
+    labels = axis_image[rows, cols]
+    component_count = int(features.path_component.max()) + 1
+
+    inside_count = np.bincount(labels, weights=interior[rows, cols].astype(np.float64), minlength=component_count)
+    total_count = np.bincount(labels, minlength=component_count)
+    inside_share = inside_count[features.component_id] / np.maximum(total_count[features.component_id], 1)
+    return (inside_share >= minimum_inside_share) & ~host_components
+
+
+def find_text_sized_components(
+    features: ComponentFeatures, reference_diagonal: float, size_tolerance: float = 1.0
+) -> Mask:
+    """Найти компоненты, сопоставимые по размеру с кусками текстовой области.
+
+    Parameters
+    ----------
+    features : ComponentFeatures
+        Признаки компонент.
+    reference_diagonal : float
+        Характерный габарит текста в пикселях.
+    size_tolerance : float
+        Множитель к характерному габариту.
+
+    Returns
+    -------
+    Mask
+        Маска компонент, чей габарит не превышает порог.
+
+    Notes
+    -----
+    Правило снимает буквы и обозначения, которые детектор пропустил: они не связаны с деталью и по
+    размеру совпадают с найденным текстом. Деталь крупнее надписей, поэтому под правило не подпадает,
+    но на чертеже мелкой детали порог надо проверять отдельно.
+    """
+    if reference_diagonal <= 0:
+        return np.zeros(len(features), dtype=bool)
+    return features.bounding_diagonal <= size_tolerance * reference_diagonal
 
 
 def expand_selection_to_paths(features: ComponentFeatures, kept_components: Mask) -> Mask:
