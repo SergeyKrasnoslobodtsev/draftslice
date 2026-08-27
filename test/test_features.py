@@ -2,13 +2,18 @@
 
 import cv2
 import numpy as np
+import pytest
 
 from draftslice.common_types import Mask
 from draftslice.features import (
     build_component_features,
     expand_selection_to_paths,
+    find_enclosed_components,
+    find_host_contours,
     find_repeated_components,
+    find_text_sized_components,
     group_similar_components,
+    measure_text_component_scale,
     select_components,
     trim_short_twigs,
 )
@@ -137,3 +142,64 @@ def test_expand_selection_to_paths_maps_components_back() -> None:
     assert len(features) == 2
     assert int(kept_paths.sum()) == 1
     assert graph.branch_type[kept_paths][0] == 3
+
+
+def test_text_component_scale_uses_quantile() -> None:
+    canvas = np.zeros((200, 400), np.uint8)
+    cv2.rectangle(canvas, (20, 20), (50, 40), 1, cv2.FILLED)
+    cv2.rectangle(canvas, (100, 20), (140, 60), 1, cv2.FILLED)
+    cv2.rectangle(canvas, (200, 20), (320, 120), 1, cv2.FILLED)
+    text_mask: Mask = canvas.astype(bool)
+
+    median_scale = measure_text_component_scale(text_mask, 0.5)
+    maximum_scale = measure_text_component_scale(text_mask, 1.0)
+
+    assert median_scale == pytest.approx(np.hypot(41, 41), abs=1.0)
+    assert maximum_scale == pytest.approx(np.hypot(121, 101), abs=1.0)
+    assert measure_text_component_scale(np.zeros((10, 10), dtype=bool), 0.5) == 0.0
+
+
+def test_text_sized_components_drop_small_leftovers() -> None:
+    canvas = np.zeros((320, 420), np.uint8)
+    draw_ring(canvas, 90, 120)
+    cv2.line(canvas, (250, 60), (280, 60), 1, 3)
+    cv2.line(canvas, (250, 200), (300, 240), 1, 3)
+
+    _, features = build_features(canvas)
+    text_sized = find_text_sized_components(features, reference_diagonal=70.0)
+
+    assert len(features) == 3
+    assert int(text_sized.sum()) == 2
+    assert not bool(text_sized[np.argmax(features.axis_length)])
+    assert int(find_text_sized_components(features, reference_diagonal=0.0).sum()) == 0
+
+
+def test_enclosed_components_are_protected_from_text_size_rule() -> None:
+    canvas = np.zeros((400, 600), np.uint8)
+    cv2.rectangle(canvas, (40, 40), (300, 340), 1, 3)
+    cv2.circle(canvas, (170, 190), 18, 1, 3)
+    cv2.circle(canvas, (480, 190), 18, 1, 3)
+
+    graph, features = build_features(canvas)
+    hosts = features.inside_area >= 1000
+    enclosed = find_enclosed_components(graph, features, hosts)
+    text_sized = find_text_sized_components(features, reference_diagonal=70.0)
+
+    assert int(hosts.sum()) == 1
+    assert int(enclosed.sum()) == 1
+    assert int(text_sized.sum()) == 2
+    assert int((text_sized & ~enclosed).sum()) == 1
+
+
+def test_host_contours_take_body_and_skip_small_frames() -> None:
+    canvas = np.zeros((400, 700), np.uint8)
+    cv2.rectangle(canvas, (40, 40), (340, 340), 1, 3)
+    cv2.rectangle(canvas, (420, 60), (520, 120), 1, 3)
+    cv2.rectangle(canvas, (420, 200), (470, 240), 1, 3)
+
+    _, features = build_features(canvas)
+    hosts = find_host_contours(features, minimum_area_share=0.2)
+
+    assert len(features) == 3
+    assert int(hosts.sum()) == 1
+    assert float(features.inside_area[hosts][0]) == float(features.inside_area.max())
