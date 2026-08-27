@@ -4,7 +4,12 @@ import cv2
 import numpy as np
 
 from draftslice.common_types import Mask
-from draftslice.morphology_closing import build_line_kernel, close_along_orientations, fill_internal_holes
+from draftslice.morphology_closing import (
+    build_line_kernel,
+    close_along_orientations,
+    fill_internal_holes,
+    suggest_kernel_length,
+)
 
 
 def draw_mask(height: int, width: int) -> np.ndarray:
@@ -77,3 +82,15 @@ def test_close_along_orientations_keeps_parallel_lines_apart() -> None:
     closed = close_along_orientations(parallel, kernel_length=11, orientation_count=8)
 
     assert count_components(closed) == 2
+
+
+def test_suggest_kernel_length_follows_thickness_edge() -> None:
+    assert suggest_kernel_length(3.06) == 3
+    assert suggest_kernel_length(17.4) == 17
+    assert suggest_kernel_length(11.6) == 13
+
+
+def test_suggest_kernel_length_stays_odd_and_bounded() -> None:
+    assert suggest_kernel_length(0.4) == 3
+    assert suggest_kernel_length(120.0) == 31
+    assert all(suggest_kernel_length(edge) % 2 == 1 for edge in (2.0, 4.0, 6.0, 8.0, 10.0))
