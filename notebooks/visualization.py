@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 
+from draftslice.chain_merging import StrokeChains
 from draftslice.common_types import Floats, Ints, Mask, Mat, Window
 from draftslice.stroke_graph import (
     CYCLE_BRANCH,
@@ -21,6 +22,7 @@ from draftslice.stroke_graph import (
     StrokeGraph,
 )
 from draftslice.text_detection import TextCandidates
+from draftslice.thickness_classes import ThicknessClasses
 
 ACCEPTED_COLOR = (0, 200, 0)
 """Цвет принятого кандидата в BGR."""
@@ -330,3 +332,80 @@ def draw_graph_nodes(axes: Axes, graph: StrokeGraph, window: Window) -> None:
             zorder=4,
             label=f"{name}: {len(selected)}",
         )
+
+
+CLASS_PALETTE: tuple[tuple[float, float, float], ...] = (
+    (0.27, 0.51, 1.00),
+    (0.24, 0.78, 0.35),
+    (1.00, 0.75, 0.16),
+    (1.00, 0.27, 0.27),
+    (0.78, 0.31, 1.00),
+    (0.00, 0.86, 0.86),
+)
+"""Цвета классов толщины по возрастанию класса."""
+
+UNCLASSIFIED_COLOR = (0.55, 0.55, 0.55)
+"""Цвет цепи без класса: текст или неопределенная толщина."""
+
+
+def draw_chains(graph: StrokeGraph, chains: StrokeChains, background_image: Mat, window: Window, title: str) -> None:
+    """Показать цепи, один цвет это одна цепь.
+
+    Parameters
+    ----------
+    graph : StrokeGraph
+        Граф скелета.
+    chains : StrokeChains
+        Цепи кадра.
+    background_image : Mat
+        Кадр-подложка.
+    window : Window
+        Границы окна просмотра.
+    title : str
+        Заголовок.
+
+    Notes
+    -----
+    Цвета перемешаны, поэтому соседние цепи различимы, а смена цвета вдоль линии означает, что
+    склейка там не сработала.
+    """
+    axes = create_view_axes(background_image, window, title)
+    colors = plt.cm.hsv(np.random.default_rng(1).permutation(chains.chain_count) / max(chains.chain_count - 1, 1))
+    draw_graph_paths(axes, graph, chains.path_indices, colors[chains.chain_label], line_width=2.0, z_order=3)
+    plt.show()
+
+
+def draw_thickness_classes(
+    graph: StrokeGraph,
+    chains: StrokeChains,
+    classes: ThicknessClasses,
+    background_image: Mat,
+    window: Window,
+    title: str,
+) -> None:
+    """Показать цепи, раскрасив их по классу толщины.
+
+    Parameters
+    ----------
+    graph : StrokeGraph
+        Граф скелета.
+    chains : StrokeChains
+        Цепи кадра.
+    classes : ThicknessClasses
+        Классы толщины.
+    background_image : Mat
+        Кадр-подложка.
+    window : Window
+        Границы окна просмотра.
+    title : str
+        Заголовок.
+    """
+    palette = np.array(CLASS_PALETTE[: classes.class_count], dtype=float)
+    chain_colors = np.where(
+        (classes.label < 0)[chains.chain_label][:, None],
+        np.array(UNCLASSIFIED_COLOR),
+        palette[classes.label.clip(0)[chains.chain_label]],
+    )
+    axes = create_view_axes(background_image, window, title)
+    draw_graph_paths(axes, graph, chains.path_indices, chain_colors, line_width=1.6, z_order=3)
+    plt.show()

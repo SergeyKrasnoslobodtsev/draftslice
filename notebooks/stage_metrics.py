@@ -16,7 +16,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from draftslice.common_types import Mask
+from draftslice.chain_merging import StrokeChains
+from draftslice.common_types import Floats, Ints, Mask
 from draftslice.morphology_closing import fill_internal_holes
 from draftslice.stroke_graph import (
     CYCLE_BRANCH,
@@ -25,6 +26,7 @@ from draftslice.stroke_graph import (
     SPUR_BRANCH,
     StrokeGraph,
 )
+from draftslice.thickness_classes import ThicknessClasses
 
 
 @dataclass(frozen=True)
@@ -136,4 +138,126 @@ def measure_graph_metrics(graph: StrokeGraph, text_share_limit: float = 0.5) -> 
         median_thickness=graph.median_thickness,
         total_length=float(graph.length.sum()),
         text_path_count=int((graph.text_share > text_share_limit).sum()),
+    )
+
+
+@dataclass(frozen=True)
+class ChainMetrics:
+    """Метрики склейки ребер в цепи.
+
+    Attributes
+    ----------
+    chain_count : int
+        Число цепей.
+    linked_path_count : int
+        Число ребер, попавших в цепи.
+    links_per_chain : float
+        Среднее число звеньев в цепи.
+    median_length : float
+        Медианная длина цепи.
+    maximum_length : float
+        Длина самой длинной цепи.
+    text_chain_count : int
+        Число цепей, у которых доля текста выше порога.
+    undefined_thickness_count : int
+        Число цепей с неопределенной толщиной.
+    """
+
+    chain_count: int
+    linked_path_count: int
+    links_per_chain: float
+    median_length: float
+    maximum_length: float
+    text_chain_count: int
+    undefined_thickness_count: int
+
+
+@dataclass(frozen=True)
+class ThicknessClassMetrics:
+    """Метрики разбиения цепей на классы толщины.
+
+    Attributes
+    ----------
+    centers : Floats
+        Центры классов в пикселях.
+    edges : Floats
+        Границы между соседними классами.
+    chain_counts : Ints
+        Число цепей в каждом классе.
+    length_shares : Floats
+        Доля суммарной длины, приходящаяся на каждый класс.
+    unclassified_count : int
+        Число цепей без класса: текст и неопределенная толщина.
+    """
+
+    centers: Floats
+    edges: Floats
+    chain_counts: Ints
+    length_shares: Floats
+    unclassified_count: int
+
+
+def measure_chain_metrics(chains: StrokeChains, text_share_limit: float = 0.5) -> ChainMetrics:
+    """Снять метрики склейки.
+
+    Parameters
+    ----------
+    chains : StrokeChains
+        Цепи кадра.
+    text_share_limit : float
+        Доля текста, выше которой цепь считается текстовой.
+
+    Returns
+    -------
+    ChainMetrics
+        Размер цепей и состав выборки.
+
+    Notes
+    -----
+    Среднее число звеньев в цепи показывает, работает ли склейка вообще: единица означает, что ни
+    одна пара концов не прошла ворота.
+    """
+    return ChainMetrics(
+        chain_count=chains.chain_count,
+        linked_path_count=len(chains.path_indices),
+        links_per_chain=len(chains.path_indices) / max(chains.chain_count, 1),
+        median_length=float(np.median(chains.length)) if chains.chain_count else 0.0,
+        maximum_length=float(chains.length.max()) if chains.chain_count else 0.0,
+        text_chain_count=int((chains.text_share > text_share_limit).sum()),
+        undefined_thickness_count=int((~np.isfinite(chains.thickness)).sum()),
+    )
+
+
+def measure_thickness_class_metrics(chains: StrokeChains, classes: ThicknessClasses) -> ThicknessClassMetrics:
+    """Снять метрики разбиения на классы толщины.
+
+    Parameters
+    ----------
+    chains : StrokeChains
+        Цепи кадра.
+    classes : ThicknessClasses
+        Классы толщины.
+
+    Returns
+    -------
+    ThicknessClassMetrics
+        Центры, границы, наполнение классов и доля длины в каждом.
+    """
+    classified = classes.label >= 0
+    total_length = float(chains.length[classified].sum())
+    chain_counts = np.array(
+        [int((classes.label == class_index).sum()) for class_index in range(classes.class_count)], dtype=np.int64
+    )
+    length_shares = np.array(
+        [
+            float(chains.length[classes.label == class_index].sum()) / max(total_length, 1e-6)
+            for class_index in range(classes.class_count)
+        ]
+    )
+    return ThicknessClassMetrics(
+        centers=classes.centers,
+        edges=classes.edges,
+        chain_counts=chain_counts,
+        length_shares=length_shares,
+        unclassified_count=int((~classified).sum()),
     )
