@@ -117,3 +117,46 @@ def close_along_orientations(strokes_mask: Mask, kernel_length: int, orientation
         kernel = build_line_kernel(kernel_length, float(orientation_degrees))
         closed |= cv2.morphologyEx(source, cv2.MORPH_CLOSE, kernel)
     return closed > 0
+
+
+MINIMUM_KERNEL_LENGTH = 3
+"""Нижняя граница длины ядра: короче трех пикселей замыкание не закрывает ничего."""
+
+MAXIMUM_KERNEL_LENGTH = 31
+"""Верхняя граница длины ядра, страховка от вырожденных оценок толщины."""
+
+
+def suggest_kernel_length(
+    thickness_edge_pixels: float,
+    minimum_length: int = MINIMUM_KERNEL_LENGTH,
+    maximum_length: int = MAXIMUM_KERNEL_LENGTH,
+) -> int:
+    """Предложить длину ядра замыкания по границе классов толщины.
+
+    Parameters
+    ----------
+    thickness_edge_pixels : float
+        Граница между младшим и следующим классом толщины в пикселях рабочего масштаба.
+    minimum_length : int
+        Нижняя граница результата.
+    maximum_length : int
+        Верхняя граница результата.
+
+    Returns
+    -------
+    int
+        Нечетная длина линейного структурного элемента в пикселях.
+
+    Notes
+    -----
+    Разрыв в контуре появляется там, где через него проходила тонкая линия, и ширина выреза равна
+    толщине этой линии. Граница классов толщины как раз отделяет тонкие линии от контура, поэтому она
+    описывает масштаб разрывов лучше, чем разрешение листа.
+
+    Прежнее правило было ступенчатым по длинной стороне исходника и на датасете промахнулось: кадр со
+    стороной 6812 пикселей и границей классов 17.4 получал ядро в три пикселя, то есть замыкание там
+    не работало вовсе. Значение остается предложением, окончательный выбор делает слайдер в блокноте.
+    """
+    length = int(round(thickness_edge_pixels))
+    length = max(minimum_length, min(length, maximum_length))
+    return length + 1 - length % 2
