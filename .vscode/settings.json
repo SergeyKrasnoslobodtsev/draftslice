@@ -4,5 +4,9 @@
     ],
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "jupyter.notebookFileRoot": "${workspaceFolder}"
+    "jupyter.notebookFileRoot": "${fileDirname}",
+    "python.analysis.extraPaths": [
+        "src",
+        "notebooks"
+    ]
 }
