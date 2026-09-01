@@ -13,7 +13,7 @@ from matplotlib.axes import Axes
 from matplotlib.collections import LineCollection
 
 from draftslice.chain_merging import StrokeChains
-from draftslice.common_types import Floats, Ints, Mask, Mat, Window
+from draftslice.common_types import Floats, IntMap, Ints, Mask, Mat, Window
 from draftslice.features import ComponentFeatures
 from draftslice.stroke_graph import (
     CYCLE_BRANCH,
@@ -412,6 +412,60 @@ def draw_thickness_classes(
     plt.show()
 
 
+GROUP_PALETTE: tuple[tuple[float, float, float], ...] = (
+    (0.90, 0.10, 0.29),
+    (0.24, 0.78, 0.35),
+    (1.00, 0.75, 0.16),
+    (0.00, 0.51, 0.78),
+    (0.96, 0.51, 0.19),
+    (0.57, 0.12, 0.71),
+    (0.27, 0.94, 0.94),
+    (0.94, 0.20, 0.90),
+    (0.82, 0.96, 0.24),
+    (0.00, 0.50, 0.50),
+)
+"""Цвета групп кусков part_mask, циклически повторяются, если групп больше палитры."""
+
+
+def draw_view_groups(
+    labels: IntMap, group_count: int, raw_component_count: int, background_image: Mat, window: Window, title: str
+) -> None:
+    """Показать группы кусков part_mask после слияния разрывов, каждую своим цветом.
+
+    Parameters
+    ----------
+    labels : IntMap
+        Номер группы на пиксель, 0 вне маски.
+    group_count : int
+        Число групп после слияния.
+    raw_component_count : int
+        Число кусков растра до слияния.
+    background_image : Mat
+        Кадр-подложка.
+    window : Window
+        Границы окна просмотра.
+    title : str
+        Заголовок.
+
+    Notes
+    -----
+    Разные виды должны получить заметно разные цвета, а разрыв внутри одного вида, слитый мержем,
+    должен оказаться одного цвета по обе стороны от разрыва: по этому и проверяется, не задран ли
+    порог разрыва и не слиплись ли два разных вида в один.
+    """
+    palette = np.array(GROUP_PALETTE, dtype=float)
+    overlay = np.zeros((*labels.shape, 4))
+    in_mask = labels > 0
+    overlay[in_mask, :3] = palette[(labels[in_mask] - 1) % len(GROUP_PALETTE)]
+    overlay[in_mask, 3] = 1.0
+
+    axes = create_view_axes(
+        background_image, window, f"{title} | кусков было {raw_component_count}, групп стало {group_count}"
+    )
+    axes.imshow(overlay)
+    plt.show()
+
+
 ADDED_PIXEL_COLOR = (0, 0, 255)
 """Цвет пикселей, добавленных замыканием, в BGR."""
 
@@ -559,6 +613,27 @@ def show_before_after_list(
             axes.imshow(np.where(mask, 0, 255).astype(np.uint8), cmap="gray")
             axes.set_title(f"{title}, {name}", fontsize=9)
             axes.axis("off")
+    figure.tight_layout()
+    plt.show()
+
+
+def show_view_crops(crops: list[Mask], titles: list[str], row_height: float = 3.0) -> None:
+    """Показать кропы видов по одному в строке.
+
+    Parameters
+    ----------
+    crops : list[Mask]
+        Кропы видов, вырезанные из part_mask.
+    titles : list[str]
+        Подписи, тот же порядок, что и `crops`.
+    row_height : float
+        Высота одной строки в дюймах.
+    """
+    figure, axes_list = plt.subplots(len(crops), 1, figsize=(13, len(crops) * row_height))
+    for axes, crop, title in zip(np.atleast_1d(axes_list), crops, titles, strict=True):
+        axes.imshow(np.where(crop, 0, 255).astype(np.uint8), cmap="gray")
+        axes.set_title(f"{title} | {crop.shape[1]}x{crop.shape[0]}", fontsize=9)
+        axes.axis("off")
     figure.tight_layout()
     plt.show()
 
