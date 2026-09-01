@@ -70,6 +70,11 @@ class PipelineParameters:
         Доля пикселей компоненты внутри контура детали, при которой она считается вложенной.
     host_area_share : float
         Доля от наибольшей внутренней площади, начиная с которой контур считается телом детали.
+    view_merge_gap_thickness : float
+        Наибольший зазор между кусками детали, как число толщин линии, при котором они еще
+        считаются одним видом.
+    view_padding_thickness : float
+        Отступ вокруг габарита вида при вырезке, как число толщин линии.
     """
 
     detector_scales: tuple[int, ...] = (320, 640, 2000)
@@ -102,3 +107,6 @@ class PipelineParameters:
     text_size_tolerance: float = 1.0
     enclosed_inside_share: float = 0.9
     host_area_share: float = 0.2
+
+    view_merge_gap_thickness: float = 8.0
+    view_padding_thickness: float = 3.0
