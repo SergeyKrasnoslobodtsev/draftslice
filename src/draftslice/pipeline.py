@@ -41,6 +41,7 @@ from draftslice.text_detection import (
     take_accepted_kernels,
 )
 from draftslice.thickness_classes import ThicknessClasses, fit_thickness_classes, select_chains_by_class
+from draftslice.view_extraction import group_mask_components, normalize_view_crops, render_view
 
 
 @dataclass(frozen=True, eq=False)
@@ -260,3 +261,55 @@ def run_pipeline(
         final_paths=final_paths,
         part_mask=part_mask,
     )
+
+
+def extract_views(
+    image: Mat, detector: TextProbabilityDetector, target_size: int, parameters: PipelineParameters | None = None
+) -> list[Mat]:
+    """Прогнать кадр через пайплайн очистки и разбить итоговую маску детали на виды.
+
+    Parameters
+    ----------
+    image : Mat
+        Кадр чертежа в порядке каналов BGR.
+    detector : TextProbabilityDetector
+        Загруженная модель детекции текста.
+    target_size : int
+        Сторона итогового квадрата кропа вида в пикселях, под вход конкретной модели эмбеддинга.
+    parameters : PipelineParameters | None
+        Пороги пайплайна, None означает значения по умолчанию.
+
+    Returns
+    -------
+    list[Mat]
+        Виды детали как RGB-картинки, все в едином масштабе и вписанные в квадрат `target_size`, от
+        самого крупного вида к самому мелкому — готовые к подаче в модель эмбеддинга (CLIP, DINOv3).
+    """
+    parameters = parameters or PipelineParameters()
+
+    text_region_mask = detect_text_region(image, detector, parameters)
+    scaled_image = scale_image(image, parameters.working_scale)
+    scaled_text_region = scale_mask(text_region_mask, parameters.working_scale)
+    strokes = binarize_strokes(scaled_image)
+
+    strokes_graph = build_stroke_graph(strokes.strokes_mask, scaled_text_region)
+    line_thickness = strokes_graph.median_thickness
+    chains = build_stroke_chains(strokes_graph, parameters.chain)
+    classes = fit_thickness_classes(
+        chains, parameters.thickness_class_count, parameters.text_share_limit, parameters.weight_classes_by_length
+    )
+    clean_mask = build_clean_mask(strokes_graph, chains, classes, strokes.strokes_mask, parameters)
+
+    kernel_length = parameters.closing_kernel_length or suggest_kernel_length(float(classes.edges[0]))
+    closed_mask = close_along_orientations(clean_mask, kernel_length, parameters.closing_orientation_count)
+
+    closed_graph = build_stroke_graph(closed_mask, scaled_text_region)
+    all_paths = np.ones(closed_graph.path_count, dtype=bool)
+    features = build_component_features(closed_graph, all_paths, scaled_text_region)
+    kept_paths = select_part_paths(closed_graph, features, scaled_text_region, parameters)
+    final_paths = trim_short_twigs(closed_graph, kept_paths, features.path_component, parameters.twig_length_share)
+    part_mask = paint_selected_paths(closed_graph, final_paths, strokes.strokes_mask, parameters.radius_tolerance)
+
+    groups = group_mask_components(part_mask, line_thickness, parameters.view_merge_gap_thickness)
+    crops = normalize_view_crops(part_mask, groups, parameters.view_padding_thickness * line_thickness, target_size)
+    return [render_view(crop) for crop in crops]
