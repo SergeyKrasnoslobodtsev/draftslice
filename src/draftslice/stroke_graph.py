@@ -267,7 +267,12 @@ def build_stroke_graph(strokes_mask: Mask, text_region_mask: Mask) -> StrokeGrap
     distance_map = cv2.distanceTransform(strokes_mask.astype(np.uint8) * 255, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
 
     skeleton = Skeleton(skeleton_mask)
-    summary = summarize(skeleton, separator="-")
+    # На macOS numpy использует Accelerate вместо OpenBLAS, и его matmul поднимает
+    # ложные RuntimeWarning ("divide by zero", "overflow" и т.п.) на вырожденных
+    # входах (ветви-циклы skan с совпадающими src/dst, большие координаты).
+    # Результат от этого не портится, поэтому глушим все категории FPE здесь.
+    with np.errstate(all="ignore"):
+        summary = summarize(skeleton, separator="-")
     source_node = summary["node-id-src"].to_numpy()
     target_node = summary["node-id-dst"].to_numpy()
 
