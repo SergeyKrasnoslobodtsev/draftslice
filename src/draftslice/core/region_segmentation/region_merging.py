@@ -57,6 +57,12 @@ def _find_merge_candidates(
     should_merge = same_row | same_col
 
     n = len(small_labels)
+    # TODO: skipy.spatial.cKDTree возможно ускорит поиск кандидатов
+    # на слияние и уменьшит объем памяти на больших матрицах.
+    # Дешевле: sweep-line по компонентам, отсортированным по top,
+    # или scipy.spatial.cKDTree вместо плотной O(n²) матрицы.
+    # Необходимо замерить производительность и объем памяти
+    # для больших изображений.
     upper_triangle = np.triu(np.ones((n, n), dtype=bool), k=1)
     return np.nonzero(should_merge & upper_triangle)
 
