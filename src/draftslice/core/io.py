@@ -1,4 +1,6 @@
-from draftslice.core.exceptions import ValueError
+import os
+
+from draftslice.core.exceptions import DraftsliceFileNotFoundError, DraftsliceValueError, IORuntimeError
 from draftslice.core.types import Mat
 
 
@@ -17,15 +19,23 @@ def load_image(filename: str | bytes | Mat) -> Mat:
 
     Raises
     ------
-    ValueError
+    DraftsliceFileNotFoundError
+        Если файл не найден.
+    DraftsliceValueError
         Если изображение не удалось загрузить или имеет неверный формат.
-    ValueError
+    DraftsliceValueError
         Если изображение не является цветным изображением с тремя каналами.
+    IORuntimeError
+        Если произошла ошибка ввода-вывода при загрузке изображения.
     """
     img = None
+
     if isinstance(filename, str):
         import cv2
         import numpy as np
+
+        if not os.path.exists(filename):
+            raise DraftsliceFileNotFoundError(f"Файл не найден: {filename}")
 
         buffer = np.fromfile(filename, dtype=np.uint8)
         img = cv2.imdecode(buffer, cv2.IMREAD_COLOR_RGB)
@@ -39,9 +49,9 @@ def load_image(filename: str | bytes | Mat) -> Mat:
 
     if isinstance(filename, Mat):
         if filename.ndim != 3 or filename.shape[-1] != 3:
-            raise ValueError(f"Неверный формат изображения {filename}")
+            raise DraftsliceValueError(f"Неверный формат изображения {filename}")
         img = filename
 
     if img is None:
-        raise ValueError(f"Не удалось загрузить {filename}")
+        raise IORuntimeError(f"Не удалось загрузить {filename}")
     return img
