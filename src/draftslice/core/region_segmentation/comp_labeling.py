@@ -9,6 +9,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import cast
 
 import cv2
 import numpy as np
@@ -23,9 +24,9 @@ class ComponentLabels:
 
     Attributes
     ----------
-    labels : Array[np.intp]
+    labels : Array2D[np.intp]
         Метки каждой компоненты.
-    area : Array[np.int32]
+    area : Array[np.float32]
         Площадь каждой компоненты.
     left : Array[np.int32]
         Координаты левой границы каждой компоненты.
@@ -42,8 +43,8 @@ class ComponentLabels:
 
     """
 
-    labels: Array[np.intp]
-    area: Array[np.int32]
+    labels: Array2D[np.intp]
+    area: Array[np.float32]
     left: Array[np.int32]
     top: Array[np.int32]
     right: Array[np.int32]
@@ -88,18 +89,18 @@ def find_connected_components(dilated_mask: Mat) -> ComponentLabels:
 
     outer_indices = np.flatnonzero(hierarchy[0][:, 3] == -1)
     image_size = (dilated_mask.shape[0], dilated_mask.shape[1])
-
+    contours = cast(Sequence[Array2D[np.int32]], contours)
     filled_mask = _get_filled_mask(image_size, contours, outer_indices)
 
     _, labels, stats, _ = cv2.connectedComponentsWithStats(filled_mask, connectivity=8)
 
     return ComponentLabels(
-        labels=labels,
-        area=stats[1:, cv2.CC_STAT_AREA],
-        left=stats[1:, cv2.CC_STAT_LEFT],
-        top=stats[1:, cv2.CC_STAT_TOP],
-        right=stats[1:, cv2.CC_STAT_LEFT] + stats[1:, cv2.CC_STAT_WIDTH],
-        bottom=stats[1:, cv2.CC_STAT_TOP] + stats[1:, cv2.CC_STAT_HEIGHT],
-        width=stats[1:, cv2.CC_STAT_WIDTH],
-        height=stats[1:, cv2.CC_STAT_HEIGHT],
+        labels=labels.astype(np.intp),
+        area=stats[1:, cv2.CC_STAT_AREA].astype(np.float32),
+        left=stats[1:, cv2.CC_STAT_LEFT].astype(np.int32),
+        top=stats[1:, cv2.CC_STAT_TOP].astype(np.int32),
+        right=(stats[1:, cv2.CC_STAT_LEFT] + stats[1:, cv2.CC_STAT_WIDTH]).astype(np.int32),
+        bottom=(stats[1:, cv2.CC_STAT_TOP] + stats[1:, cv2.CC_STAT_HEIGHT]).astype(np.int32),
+        width=stats[1:, cv2.CC_STAT_WIDTH].astype(np.int32),
+        height=stats[1:, cv2.CC_STAT_HEIGHT].astype(np.int32),
     )

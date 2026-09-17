@@ -64,7 +64,8 @@ def _find_merge_candidates(
     # Необходимо замерить производительность и объем памяти
     # для больших изображений.
     upper_triangle = np.triu(np.ones((n, n), dtype=bool), k=1)
-    return np.nonzero(should_merge & upper_triangle)
+    row_indices, col_indices = np.nonzero(should_merge & upper_triangle)
+    return row_indices, col_indices
 
 
 def _find_chunk_root(label: int, chunk_parent: Array[np.int32]) -> int:

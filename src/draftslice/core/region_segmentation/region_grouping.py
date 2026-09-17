@@ -65,7 +65,7 @@ def group_regions(
     if not np.any(markers):
         raise ArrayNullError("Нет seed-компонентов для группировки.")
 
-    _, nearest_seed_pixel_indices = distance_transform_edt(markers == 0, return_indices=True)
+    _, nearest_seed_pixel_indices = distance_transform_edt(markers == 0, return_indices=True)  # type: ignore
     nearest_marker = markers[nearest_seed_pixel_indices[0], nearest_seed_pixel_indices[1]]
 
     groups = np.zeros(number_of_components + 1, dtype=np.int32)

@@ -70,7 +70,7 @@ def classify_components(labels: ComponentLabels, image_height: int, image_width:
         (labels.left <= 0) | (labels.top <= 0) | (labels.right >= image_width) | (labels.bottom >= image_height)
     )
 
-    mean_area: np.float64 = np.mean(labels.area)
+    mean_area = np.mean(labels.area)
 
     small_labels: Array[np.intp] = np.flatnonzero((labels.area < mean_area) & ~touches_edge) + 1
     seed_labels: Array[np.intp] = np.flatnonzero((labels.area >= mean_area) & ~touches_edge) + 1

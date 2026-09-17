@@ -47,7 +47,7 @@ def load_image(filename: str | bytes | Mat) -> Mat:
         buffer = np.frombuffer(filename, dtype=np.uint8)
         img = cv2.imdecode(buffer, cv2.IMREAD_COLOR_RGB)
 
-    if isinstance(filename, Mat):
+    if isinstance(filename, Mat):  # type: ignore
         if filename.ndim != 3 or filename.shape[-1] != 3:
             raise DraftsliceValueError(f"Неверный формат изображения {filename}")
         img = filename
