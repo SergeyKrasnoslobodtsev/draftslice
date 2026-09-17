@@ -13,7 +13,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from draftslice.core.exceptions import ValueError
+from draftslice.core.exceptions import DraftsliceValueError
 from draftslice.core.types import Array, Array2D, Mat
 
 
@@ -79,12 +79,12 @@ def find_connected_components(dilated_mask: Mat) -> ComponentLabels:
 
     Raises
     ------
-    ValueError
+    DraftsliceValueError
         Если во входной маске нет ни одного foreground пикселя.
     """
     contours, hierarchy = cv2.findContours(dilated_mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None:
-        raise ValueError("Маска не содержит ни одного foreground пикселя.")
+        raise DraftsliceValueError("Маска не содержит ни одного foreground пикселя.")
 
     outer_indices = np.flatnonzero(hierarchy[0][:, 3] == -1)
     image_size = (dilated_mask.shape[0], dilated_mask.shape[1])
