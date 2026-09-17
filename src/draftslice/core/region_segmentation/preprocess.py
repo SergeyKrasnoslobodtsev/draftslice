@@ -13,7 +13,7 @@ Notes
 с очень высоким или очень низким разрешением.
 """
 
-from draftslice.core.exceptions import ValueError
+from draftslice.core.exceptions import DraftsliceValueError
 from draftslice.core.types import Mat
 from draftslice.core.utils import image_utils as imutils
 
@@ -40,16 +40,16 @@ def preprocess_drawing(image_rgb: Mat, dilation_kernel_scale_divisor: int = 300)
         Бинарная маска после дилатации.
     Raises
     ------
-    ValueError
+    DraftsliceValueError
         Если входное изображение равно None.
-    ValueError
+    DraftsliceValueError
         Если делитель для масштаба ядра дилатации не является положительным числом.
     """
     if image_rgb is None:
-        raise ValueError("Входное изображение не должно быть None.")
+        raise DraftsliceValueError("Входное изображение не должно быть None.")
 
     if dilation_kernel_scale_divisor <= 0:
-        raise ValueError("Делитель для масштаба ядра дилатации должен быть положительным числом.")
+        raise DraftsliceValueError("Делитель для масштаба ядра дилатации должен быть положительным числом.")
 
     grayscale_image = imutils.rgb_to_grayscale(image_rgb)
     binary_mask = imutils.binarize_image(grayscale_image)
