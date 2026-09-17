@@ -5,22 +5,43 @@ class DraftsliceException(Exception):
         super().__init__(message)
 
 
-class ValueError(DraftsliceException):
+class DraftsliceValueError(DraftsliceException):
     """Исключение для ошибок значения в библиотеке Draftslice."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
-class TypeError(DraftsliceException):
+class DraftsliceTypeError(DraftsliceException):
     """Исключение для ошибок типа в библиотеке Draftslice."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
-class RuntimeError(DraftsliceException):
+class DraftsliceRuntimeError(DraftsliceException):
     """Исключение для ошибок времени выполнения в библиотеке Draftslice."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class ArrayNullError(DraftsliceException):
+    """Исключение для ошибок работы с пустыми массивами в библиотеке Draftslice."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class DraftsliceFileNotFoundError(DraftsliceException):
+    """Исключение для ошибок отсутствия файла в библиотеке Draftslice."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class IORuntimeError(DraftsliceException):
+    """Исключение для ошибок ввода-вывода в библиотеке Draftslice."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
