@@ -14,18 +14,3 @@ Array: TypeAlias = npt.NDArray[DType]
 
 Array2D: TypeAlias = npt.NDArray[DType]
 """Двумерный массив (матрица/таблица, напр. stats, маска)."""
-
-Vec: TypeAlias = npt.NDArray[DType]
-"""Вектор произвольной размерности — направление или смещение."""
-
-Vec2D: TypeAlias = npt.NDArray[DType]
-"""Вектор из 2 чисел (dx, dy)."""
-
-Vec3D: TypeAlias = npt.NDArray[DType]
-"""Вектор из 3 чисел (dx, dy, dz)."""
-
-Point: TypeAlias = npt.NDArray[DType]
-"""Координата произвольной размерности."""
-
-Point2D: TypeAlias = npt.NDArray[DType]
-"""Координата на плоскости (x, y)."""
