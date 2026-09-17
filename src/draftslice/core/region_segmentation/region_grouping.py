@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.ndimage import distance_transform_edt
 
+from draftslice.core.exceptions import ArrayNullError
 from draftslice.core.region_segmentation.comp_classification import ComponentClassification
 from draftslice.core.region_segmentation.comp_labeling import ComponentLabels
 from draftslice.core.types import Array, Array2D
@@ -60,6 +61,9 @@ def group_regions(
     is_seed_lookup = np.zeros(number_of_components + 1, dtype=bool)
     is_seed_lookup[classification.seed_labels] = True
     markers = np.where(is_seed_lookup[merged_labels], merged_labels, 0)
+
+    if not np.any(markers):
+        raise ArrayNullError("Нет seed-компонентов для группировки.")
 
     _, nearest_seed_pixel_indices = distance_transform_edt(markers == 0, return_indices=True)
     nearest_marker = markers[nearest_seed_pixel_indices[0], nearest_seed_pixel_indices[1]]
