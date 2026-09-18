@@ -45,3 +45,10 @@ class IORuntimeError(DraftsliceException):
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+
+class InvalidImageAngleError(DraftsliceException):
+    """Исключение для ошибок некорректного угла поворота изображения в библиотеке Draftslice."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
