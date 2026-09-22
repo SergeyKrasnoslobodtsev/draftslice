@@ -18,8 +18,12 @@ class MorphShape(enum.IntEnum):
 
 @validate_image(channels=3)
 def rgb_to_grayscale(image_rgb: Mat) -> Mat:
-    """Преобразует RGB изображение в градации серого."""
-    return cv2.cvtColor(image_rgb, cv2.COLOR_RGB2GRAY)
+    """Преобразует RGB в серый минимумом по каналам: любая цветная линия становится тёмной.
+
+    По яркости (`COLOR_RGB2GRAY`) светлые цветные линии - жёлтая, оранжевая осевая - уходят за
+    порог Otsu в фон, и там, где такая линия пересекает контур, в контуре появляется разрыв.
+    """
+    return image_rgb.min(axis=2)
 
 
 @validate_image(channels=1)
