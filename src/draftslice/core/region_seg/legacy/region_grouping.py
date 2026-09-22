@@ -13,8 +13,8 @@ import numpy as np
 from scipy.ndimage import distance_transform_edt
 
 from draftslice.core.exceptions import ArrayNullError
-from draftslice.core.region_segmentation.comp_classification import ComponentClassification
-from draftslice.core.region_segmentation.comp_labeling import ComponentLabels
+from draftslice.core.region_seg.legacy.comp_classification import ComponentClassification
+from draftslice.core.region_seg.legacy.comp_labeling import ComponentLabels
 from draftslice.core.types import Array, Array2D
 
 

@@ -32,13 +32,13 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from draftslice.core.region_segmentation.comp_classification import classify_components
-from draftslice.core.region_segmentation.comp_labeling import (
+from draftslice.core.region_seg.legacy.comp_classification import classify_components
+from draftslice.core.region_seg.legacy.comp_labeling import (
     find_connected_components,
 )
-from draftslice.core.region_segmentation.preprocess import preprocess_drawing
-from draftslice.core.region_segmentation.region_grouping import Groups, group_regions
-from draftslice.core.region_segmentation.region_merging import merge_into_chunks
+from draftslice.core.region_seg.legacy.preprocess import preprocess_drawing
+from draftslice.core.region_seg.legacy.region_grouping import Groups, group_regions
+from draftslice.core.region_seg.legacy.region_merging import merge_into_chunks
 from draftslice.core.types import Mat
 
 

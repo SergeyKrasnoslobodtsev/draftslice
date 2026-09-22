@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from draftslice.core.region_segmentation.comp_labeling import ComponentLabels
+from draftslice.core.region_seg.legacy.comp_labeling import ComponentLabels
 from draftslice.core.types import Array
 
 
