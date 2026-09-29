@@ -12,6 +12,8 @@ dependencies = [
     "onnxruntime==1.23.0",
     "skan>=0.13.1",
     "scikit-learn>=1.7.2",
+    "paddlepaddle-gpu==; sys_platform == 'linux'",
+    "paddlepaddle; sys_platform == 'win32' or sys_platform == 'darwin'",
 ]
 
 
@@ -36,6 +38,20 @@ required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddlepaddle-gpu" }
+paddlepaddle = { index = "paddlepaddle-cpu" }
+
+[[tool.uv.index]]
+name = "paddlepaddle-gpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
+explicit = true
+
+[[tool.uv.index]]
+name = "paddlepaddle-cpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+explicit = true
 
 [tool.ruff]
 exclude = [

@@ -41,7 +41,7 @@ class MergeGates:
 
     maximum_deviation_degrees: float = 20.0
     maximum_offset_pixels: float = 7.5
-    maximum_thickness_ratio: float = 1.6
+    maximum_thickness_ratio: float = 3.0
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class ChainMergeParameters:
         Ворота склейки.
     """
 
-    node_radius_pixels: float = 8.0
+    node_radius_pixels: float = 3.0
     tangent_length_pixels: int = 12
     gates: MergeGates = MergeGates()
 
