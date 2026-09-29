@@ -8,24 +8,6 @@
 import matplotlib.colors as mcolors
 import numpy as np
 from matplotlib import pyplot as plt
-from scipy.ndimage import distance_transform_edt
-
-
-def label_skeleton_branches(image_shape, skeleton_obj, num_branches):
-    """Метка каждого пиксела скелета индексом его ветки (0 - фон, не скелет)."""
-    branch_labels = np.zeros(image_shape, dtype=np.int32)
-    for i in range(num_branches):
-        coords = skeleton_obj.path_coordinates(i).astype(int)
-        branch_labels[coords[:, 0], coords[:, 1]] = i + 1
-    return branch_labels
-
-
-def nearest_branch_map(branch_labels):
-    """Для каждого пиксела - индекс ближайшей ветки скелета (nearest-neighbor от пикселов скелета)."""
-    nearest_row, nearest_col = distance_transform_edt(
-        branch_labels == 0, return_distances=False, return_indices=True
-    )
-    return branch_labels[nearest_row, nearest_col] - 1
 
 
 def paint_lines_by_branch_color(binary, nearest_branch, branch_colors):

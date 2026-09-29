@@ -7,11 +7,13 @@ requires-python = ">=3.10"
 
 dependencies = [
     "numpy>=2.2.6",
-    "opencv-python-headless>=4.13.0.92",
+    "opencv-contrib-python>=4.13.0.92,<5",
     "scikit-image>=0.25.2",
-    "onnxruntime==1.23.0",
     "skan>=0.13.1",
     "scikit-learn>=1.7.2",
+    "paddleocr>=3.7.0",
+    "paddlepaddle-gpu>=3.3.1 ; sys_platform == 'linux'",
+    "paddlepaddle>=3.3.1 ; sys_platform == 'win32' or sys_platform == 'darwin'",
 ]
 
 
@@ -24,10 +26,7 @@ dev = [
     "matplotlib>=3.9.4",
     "ipywidgets>=8.1.8",
     "pandas>=2.0",
-    "torch>=2.13.0",
-    "transformers>=5.16.1",
     "tqdm>=4.68.3",
-    "torchvision>=0.28.0",
 ]
 
 [tool.uv]
@@ -36,6 +35,23 @@ required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
+# paddlex закрепляет opencv-contrib-python==4.10.0.84, а проекту нужен 4.13 (cv2.IMREAD_COLOR_RGB)
+# и contrib (cv2.ximgproc.thinning). Одна сборка cv2 на окружение - две сборки перетирают модуль.
+override-dependencies = ["opencv-contrib-python>=4.13.0.92,<5"]
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddlepaddle-gpu" }
+paddlepaddle = { index = "paddlepaddle-cpu" }
+
+[[tool.uv.index]]
+name = "paddlepaddle-gpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
+explicit = true
+
+[[tool.uv.index]]
+name = "paddlepaddle-cpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+explicit = true
 
 [tool.ruff]
 exclude = [
