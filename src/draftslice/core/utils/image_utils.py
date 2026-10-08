@@ -16,24 +16,6 @@ class MorphShape(enum.IntEnum):
     CROSS = cv2.MORPH_CROSS
 
 
-@validate_image(channels=3)
-def rgb_to_grayscale(image_rgb: Mat) -> Mat:
-    """Преобразует RGB в серый минимумом по каналам: любая цветная линия становится тёмной.
-
-    По яркости (`COLOR_RGB2GRAY`) светлые цветные линии - жёлтая, оранжевая осевая - уходят за
-    порог Otsu в фон, и там, где такая линия пересекает контур, в контуре появляется разрыв.
-    `cv2.min` по каналам даёт тот же результат в ~6 раз быстрее `ndarray.min(axis=2)`.
-    """
-    c0, c1, c2 = cv2.split(image_rgb)
-    return cv2.min(cv2.min(c0, c1), c2)
-
-
-@validate_image(channels=1)
-def binarize_image(grayscale_image: Mat) -> Mat:
-    """Бинаризует изображение порогом Otsu с инверсией."""
-    return cv2.threshold(grayscale_image, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-
-
 @validate_image(channels=1)
 def dilate_image(binary_image: Mat, shape: MorphShape, kernel_size: int, iterations: int = 1) -> Mat:
     """Дилатирует бинарное изображение ядром заданной формы и размера."""

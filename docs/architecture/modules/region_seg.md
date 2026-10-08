@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart TD
-    A["img: Mat (RGB)"] --> B["rgb_to_grayscale + binarize_image"]
+    A["img: Mat (RGB)"] --> B["preprocess(target=None)"]
     B --> C["_edge_lines: длинные линии с краю листа"]
     C -->|"binary без рамки"| D["_find_seeds: толщина и площадь"]
     D -->|"labels, seeds"| E["_fill_seeds: заливка, отсев раскинутых"]
@@ -20,7 +20,7 @@ flowchart TD
 
 | Шаг | Функция | Вход | Выход |
 |---|---|---|---|
-| 1. Бинаризация | `rgb_to_grayscale`, `binarize_image` | `Mat` (RGB) | `Mat` (0/255) |
+| 1. Бинаризация | `preprocess` (`core.preprocess`) | `Mat` (RGB) | `Mat` (0/255) |
 | 2. Линии листа | `_edge_lines` | `Mat` | маска краевых линий |
 | 3. Seed'ы | `_find_seeds` | `Mat` | карта компонент, метки seed'ов |
 | 4. Заливка | `_fill_seeds` | карта, seed'ы | `Mat` (0/1) |
@@ -31,7 +31,7 @@ flowchart TD
 
 ## Шаг 1. Серый — минимум по каналам
 
-`rgb_to_grayscale` берёт минимум по каналам, а не яркость. Бумага — 255 во всех каналах, у любой
+`preprocess` берёт серое минимумом по каналам, а не яркостью. Бумага — 255 во всех каналах, у любой
 цветной или тёмной линии хотя бы один канал низкий. По яркости светлая цветная осевая уходит за
 порог Otsu в фон и рвёт контур в месте пересечения.
 

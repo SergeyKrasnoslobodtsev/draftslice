@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 
 from draftslice.core.exceptions import DraftsliceTypeError
+from draftslice.core.preprocess import preprocess
 from draftslice.core.region_seg.seg import _edge_lines, segment
-from draftslice.core.utils.image_utils import binarize_image, rgb_to_grayscale
 
 BLACK = (0, 0, 0)
 
@@ -67,7 +67,7 @@ def test_edge_lines_take_frame_but_keep_inner_long_line(sheet):
     cv2.rectangle(sheet, (100, 100), (300, 250), BLACK, 3)
     cv2.line(sheet, (10, 300), (790, 300), BLACK, 1)  # длинная размерная между видом и текстом
 
-    edge = _edge_lines(binarize_image(rgb_to_grayscale(sheet)), sheet_cov=0.95)
+    edge = _edge_lines(preprocess(sheet, target=None).binary, sheet_cov=0.95)
 
     assert edge[5, 400]
     assert not edge[300, 400]

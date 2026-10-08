@@ -14,8 +14,8 @@
 import cv2
 import numpy as np
 
+from draftslice.core.preprocess import preprocess
 from draftslice.core.types import Array, Array2D, Mat
-from draftslice.core.utils.image_utils import binarize_image, rgb_to_grayscale
 from draftslice.core.validators import validate_image
 
 
@@ -161,7 +161,7 @@ def segment(
     DraftsliceTypeError
         Если `img` не трёхканальное.
     """
-    binary = binarize_image(rgb_to_grayscale(img))
+    binary = preprocess(img, target=None).binary
     binary[_edge_lines(binary, sheet_cov)] = 0
     empty = np.zeros(binary.shape, dtype=np.uint16)
     if not binary.any():

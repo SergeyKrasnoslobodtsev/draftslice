@@ -14,6 +14,7 @@ Notes
 """
 
 from draftslice.core.exceptions import DraftsliceValueError
+from draftslice.core.preprocess import preprocess
 from draftslice.core.types import Mat
 from draftslice.core.utils import image_utils as imutils
 
@@ -51,8 +52,7 @@ def preprocess_drawing(image_rgb: Mat, dilation_kernel_scale_divisor: int = 300)
     if dilation_kernel_scale_divisor <= 0:
         raise DraftsliceValueError("Делитель для масштаба ядра дилатации должен быть положительным числом.")
 
-    grayscale_image = imutils.rgb_to_grayscale(image_rgb)
-    binary_mask = imutils.binarize_image(grayscale_image)
+    binary_mask = preprocess(image_rgb, target=None).binary
 
     image_width: int = binary_mask.shape[1]
     dilation_kernel_scale: int = max(image_width // dilation_kernel_scale_divisor, 1)

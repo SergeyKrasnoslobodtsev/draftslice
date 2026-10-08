@@ -17,9 +17,9 @@ import numpy as np
 from draw import colorize
 
 from draftslice.core.io import load_image
+from draftslice.core.preprocess import preprocess
 from draftslice.core.region_seg import seg
 from draftslice.core.region_seg.pipeline import run
-from draftslice.core.utils.image_utils import binarize_image, rgb_to_grayscale
 
 REQS = ["DEL-07", "KEEP-01", "VIEW-01", "VIEW-02", "OUT-04"]
 CANON = "1.0"
@@ -46,7 +46,7 @@ def stand_one(img: np.ndarray, out: Path, params: dict) -> dict:
     """Шаги сегментации одного листа в PNG, возвращает счётчики."""
     out.mkdir(parents=True, exist_ok=True)
 
-    binary = binarize_image(rgb_to_grayscale(img))
+    binary = preprocess(img, target=None).binary
     _save(out / "01_binary.png", cv2.cvtColor(255 - binary, cv2.COLOR_GRAY2RGB))
 
     edge = seg._edge_lines(binary, params["sheet_cov"])

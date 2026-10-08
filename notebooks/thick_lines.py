@@ -75,8 +75,8 @@ import pandas as pd
 from skimage.morphology import skeletonize
 
 from draftslice.core.io import load_image
+from draftslice.core.preprocess import preprocess
 from draftslice.core.region_seg.pipeline import run as region_seg
-from draftslice.core.utils.image_utils import binarize_image, rgb_to_grayscale
 
 DATA = Path("../data")
 OUT = DATA / "output" / "thick_lines"
@@ -203,10 +203,13 @@ def measure(img, polys=(), scale=1.0):
 
     polys - четырёхугольники текста OCR в px листа; компоненты текста убираются из краски.
     """
-    gray = rgb_to_grayscale(img)
+    pp = preprocess(img, target=None)
+    gray = pp.gray
     if scale != 1:
         gray = cv2.resize(gray, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-    ink = binarize_image(gray) > 0
+        ink = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1] > 0
+    else:
+        ink = pp.binary > 0
     text = np.zeros_like(ink)
     if len(polys):
         # tight - полигоны OCR как есть (обводят символы вплотную), wide - с полем в полвысоты символа:

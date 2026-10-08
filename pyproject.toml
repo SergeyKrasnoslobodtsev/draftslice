@@ -3,11 +3,11 @@ name = "draftslice"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dependencies = [
     "numpy>=2.2.6",
-    "opencv-contrib-python>=4.13.0.92,<5",
+    
     "scikit-image>=0.25.2",
     "skan>=0.13.1",
     "scikit-learn>=1.7.2",

@@ -9,15 +9,19 @@ OCR и классификации толщины линий.
 flowchart LR
     io["core.io<br/>load_image"] --> RS["core.region_seg<br/>сегментация на виды"]
     io --> OCR["core.ocr<br/>распознавание текста"]
+    io --> PP["core.preprocess<br/>серое, бинаризация, масштаб"]
     RS -->|"list[Crop]"| Next["..."]
     OCR -->|"list[OcrResult]"| Next
+    OCR -->|"полигоны текста"| TL["core.thick_lines<br/>граф линий, толстые и тонкие"]
 ```
 
 | Модуль | Роль | Вход | Выход |
 |---|---|---|---|
 | `core.io` | Загрузка изображения из пути, байтов или готовой матрицы | `str \| bytes \| Mat` | `Mat` |
+| `core.preprocess` | Серое, бинаризация и нормализация масштаба по толщине контура | `Mat` (RGB) | `Preprocessed` |
 | `core.region_seg` | Сегментация чертежа на большие сегменты — виды детали | `Mat` (RGB) | `list[Crop]` |
 | `core.ocr` | Распознавание текста на чертеже (в т.ч. повёрнутого) через PaddleOCR | `Mat` (RGB) | `list[OcrResult]` |
+| `core.thick_lines` | Граф линий по маске краски и деление линий на толстые (контур) и тонкие | маска краски `0/255` без текста, `dist` | `Skeleton`, `LineClasses` |
 
 Подробности каждого модуля — в [`modules/`](modules/), история решений и открытые проблемы —
 в [`decisions/`](decisions/).
@@ -33,4 +37,4 @@ flowchart LR
   библиотеки; `except DraftsliceException` ловит все ошибки библиотеки разом.
 - `core/validators.py` — `validate_image`, декоратор валидации изображений по каналам/dtype.
 - `core/utils/image_utils.py` — переиспользуемые примитивы над изображением
-  (`rgb_to_grayscale`, `binarize_image`, `dilate_image`, `rotate_image`).
+  (`dilate_image`, `rotate_image`). Серое и бинаризация живут в `core.preprocess`.
