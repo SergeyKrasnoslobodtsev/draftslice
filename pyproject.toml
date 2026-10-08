@@ -28,6 +28,11 @@ dev = [
     "pandas>=2.0",
     "tqdm>=4.68.3",
 ]
+# обучение YOLO-seg на Linux (training/); пакет draftslice их не импортирует
+training = [
+    "ultralytics>=8.4.0",
+    "sahi>=0.11.0",
+]
 
 [tool.uv]
 required-environments = [
@@ -107,5 +112,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 disable_test_id_escaping_and_forfeit_all_rights_to_community_support = true
-# модули стенда лежат рядом с блокнотами, тесты на них живут в test
-pythonpath = ["notebooks"]
+# модули стенда лежат рядом с блокнотами, скрипты обучения - в training; тесты на них живут в test
+pythonpath = ["notebooks", "training"]
