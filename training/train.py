@@ -6,6 +6,10 @@
 Параметры аугментации - поля `Augment`, значения по умолчанию рассчитаны на чёрно-белые чертежи: цвет отключён,
 повороты на любой угол (стрелки бывают под любым углом), масштаб, отражения, небольшое размытие.
 
+Куда что пишется - по настройкам Ultralytics (`yolo settings`): запуск - в `<runs_dir>/<задача>/<имя>/`
+(`weights/best.pt`, `args.yaml`, `results.csv`), предобученные веса - в `weights_dir`. Ultralytics ищет веса в
+`weights_dir`, но скачивает в текущую папку, поэтому имя без пути здесь заменяется на путь в `weights_dir`.
+
 Запуск (с плитками, imgsz равен плитке):
     python training/train.py --data data/dataset_yolo/tiles/data.yaml --imgsz 640
 Запуск (целые листы):
@@ -71,7 +75,6 @@ def train(
     workers: int = 8,
     mask_ratio: int = 4,
     seed: int = 0,
-    project: Path = Path("data/runs"),
     name: str | None = None,
     aug: Augment = Augment(),  # noqa: B008 - frozen dataclass, делить состояние нечему
 ) -> Path:
@@ -82,7 +85,8 @@ def train(
     data : Path
         `data.yaml` датасета (результат `make_dataset.py`).
     model : str
-        Веса или конфигурация Ultralytics, например `yolo26n-seg.pt`.
+        Веса Ultralytics: `yolo26n-seg.pt` или путь к своим `.pt`. Имя без папки -
+        предобученные веса, они берутся из `weights_dir` и скачиваются туда же.
     imgsz : int
         Размер входа. Для плиток 640 - сторона плитки: сеть получает их без ресайза. Для целых листов 1280.
     epochs, patience : int
@@ -98,8 +102,6 @@ def train(
         получается ~4 px, для мелких объектов можно попробовать 1.
     seed : int
         Зерно обучения.
-    project : Path
-        Папка запусков.
     name : str | None
         Имя запуска; по умолчанию `<папка датасета>_<веса>_<imgsz>`.
     aug : Augment
@@ -108,9 +110,10 @@ def train(
     Returns
     -------
     Path
-        Папка запуска Ultralytics с весами и графиками.
+        Папка запуска `<runs_dir>/<задача>/<имя>` с весами и графиками.
     """
     from ultralytics import YOLO
+    from ultralytics.utils import SETTINGS
 
     params = {k: v for k, v in asdict(aug).items() if k != "blur"}
     if aug.blur > 0:
@@ -119,7 +122,10 @@ def train(
         params["augmentations"] = [A.Blur(blur_limit=(3, 5), p=aug.blur)]
     if device is not None:
         params["device"] = device
-    yolo = YOLO(model)
+    weights = Path(model)
+    if weights.name == model and not weights.exists():
+        weights = Path(SETTINGS["weights_dir"]) / model
+    yolo = YOLO(str(weights))
     yolo.train(
         data=str(data),
         imgsz=imgsz,
@@ -129,7 +135,6 @@ def train(
         workers=workers,
         mask_ratio=mask_ratio,
         seed=seed,
-        project=str(project),
         name=name or f"{Path(data).parent.name}_{Path(model).stem}_{imgsz}",
         **params,
     )
@@ -148,7 +153,6 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--mask-ratio", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--project", type=Path, default=Path("data/runs"))
     ap.add_argument("--name")
     for f in fields(Augment):
         ap.add_argument(f"--{f.name.replace('_', '-')}", type=float, default=f.default, help="аугментация, см. Augment")
@@ -156,7 +160,7 @@ def main() -> None:
     aug = Augment(**{f.name: getattr(a, f.name) for f in fields(Augment)})
     save_dir = train(
         a.data, a.model, a.imgsz, a.epochs, a.batch, a.patience, a.device, a.workers, a.mask_ratio, a.seed,
-        a.project, a.name, aug,
+        a.name, aug,
     )  # fmt: skip
     print(f"запуск: {save_dir}")
 
