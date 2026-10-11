@@ -12,9 +12,7 @@ import numpy as np
 from scipy.signal import find_peaks
 from skan import Skeleton
 
-from draftslice.core.exceptions import DraftsliceValueError
 from draftslice.core.thick_lines.thickness import junction_free, skeleton_thickness
-from draftslice.core.types import Array, Array2D
 
 
 @dataclass(frozen=True, eq=False)
@@ -23,55 +21,61 @@ class LineClasses:
 
     Attributes
     ----------
-    thick : Array[np.bool_]
-        (P,) линия толстая: её уровень выше порога. Если порога нет, все линии толстые.
-    level : Array[np.float32]
+    thick : np.ndarray[bool]
+        (P,) линия толстая: её уровень выше порога или она - разрыв толстой линии (`bridge`). Если порога нет,
+        все линии толстые.
+    level : np.ndarray[float32]
         (P,) уровень толщины линий, px.
-    length : Array[np.float32]
+    length : np.ndarray[float32]
         (P,) длина линий, px: вес в распределении.
-    frame : Array[np.bool_]
+    frame : np.ndarray[bool]
         (P,) линия — рамка листа; в распределение, горки и массы не входит.
     thr : float | None
         Порог уровня толщины, px: минимум плотности под контурной горкой. None — под контурной горкой
         значимых горок нет, классы не разделены.
-    peaks : Array[np.float64]
+    peaks : np.ndarray[float64]
         (K,) уровни значимых горок, px, по возрастанию.
-    weak : Array[np.float64]
+    weak : np.ndarray[float64]
         (M,) уровни максимумов плотности, не прошедших по значимости, px.
-    valleys : Array[np.float64]
+    valleys : np.ndarray[float64]
         (K-1,) уровни минимумов плотности между соседними значимыми горками, px.
-    masses : Array[np.float64]
+    masses : np.ndarray[float64]
         (K,) доли длины линий (без рамки) в каждой горке, между соседними долинами; сумма равна единице.
     contour : int | None
         Индекс контурной горки в peaks. None — нет линий вне рамки.
-    grid : Array[np.float64]
+    grid : np.ndarray[float64]
         Сетка уровней, px, для графика плотности.
-    dens : Array[np.float64]
+    dens : np.ndarray[float64]
         Плотность распределения уровней без рамки на сетке (интеграл по px равен единице).
+    bridge : np.ndarray[bool]
+        (P,) разрыв толстой линии: короткий путь с уровнем ниже порога, который с обоих концов примыкает к толстым
+        и хотя бы с одного продолжает толстую почти по прямой; толстый по соседям, а не по своему уровню.
     """
 
-    thick: Array[np.bool_]
-    level: Array[np.float32]
-    length: Array[np.float32]
-    frame: Array[np.bool_]
+    thick: np.ndarray
+    level: np.ndarray
+    length: np.ndarray
+    frame: np.ndarray
     thr: float | None
-    peaks: Array[np.float64]
-    weak: Array[np.float64]
-    valleys: Array[np.float64]
-    masses: Array[np.float64]
+    peaks: np.ndarray
+    weak: np.ndarray
+    valleys: np.ndarray
+    masses: np.ndarray
     contour: int | None
-    grid: Array[np.float64]
-    dens: Array[np.float64]
+    grid: np.ndarray
+    dens: np.ndarray
+    bridge: np.ndarray
 
 
 def classify_lines(
     g: Skeleton,
-    dist: Array2D[np.float32],
+    dist: np.ndarray,
     t_c: float,
     *,
     frame_span: float = 0.9,
     prominence: float = 0.05,
     bandwidth: float = 0.05,
+    max_kink_deg: float = 30.0,
 ) -> LineClasses:
     """Разделить линии графа на толстые и тонкие порогом в долине под контурной горкой.
 
@@ -82,11 +86,17 @@ def classify_lines(
     линия толстая, если её уровень выше порога. Если ниже контурной горки значимых горок нет, порога нет и
     все линии толстые: потеря контура хуже оставшегося шума.
 
+    Короткий путь (короче трёх толщин соседних толстых - столько же, сколько нужно разрезу по толщине в
+    build_graph) своей надёжной толщины не имеет: между узлами штриховки скелет меряет стык, и кусок контура
+    получает уровень тонкой. Такой путь толстый, если с обоих концов к нему примыкают толстые пути и хотя бы с
+    одного конца он продолжает толстый путь почти по прямой (излом не больше max_kink_deg): разрыв толстой
+    линии, в том числе на её изломе. Штрих штриховки подходит к линиям под углом и тонким остаётся.
+
     Parameters
     ----------
     g : Skeleton
         Итоговый граф (build_graph).
-    dist : Array2D[np.float32]
+    dist : np.ndarray[float32]
         Расстояние до фона по краске (cv2.distanceTransform), px; его форма — размер листа.
     t_c : float
         Толщина контура в масштабе графа, px (Preprocessed.t_c * Preprocessed.scale).
@@ -96,6 +106,8 @@ def classify_lines(
         Доля максимума плотности, ниже которой выступ максимума не считается горкой, в (0, 1).
     bandwidth : float
         Ширина гауссова ядра в логарифме уровня; горки ближе $e^{4 \\cdot bandwidth}$ раз сливаются.
+    max_kink_deg : float
+        Наибольший излом, градусы, при котором короткий путь продолжает толстую линию (как в build_graph).
 
     Returns
     -------
@@ -104,17 +116,18 @@ def classify_lines(
 
     Raises
     ------
-    DraftsliceValueError
+    ValueError
         t_c или bandwidth не положительны, prominence вне (0, 1) или frame_span вне (0, 1].
     """
     if t_c <= 0 or bandwidth <= 0 or not 0 < prominence < 1 or not 0 < frame_span <= 1:
-        raise DraftsliceValueError(f"Некорректные параметры: {t_c=}, {frame_span=}, {prominence=}, {bandwidth=}")
+        raise ValueError(f"Некорректные параметры: {t_c=}, {frame_span=}, {prominence=}, {bandwidth=}")
     level, length = _levels(g, dist)
     frame = _frame(g, dist.shape, frame_span)
     body = ~frame
     if not body.any():
         e = np.empty(0)
-        return LineClasses(np.ones(len(level), bool), level, length, frame, None, e, e, e, e, None, e, e)
+        no = np.zeros(len(level), bool)
+        return LineClasses(np.ones(len(level), bool), level, length, frame, None, e, e, e, e, None, e, e, no)
 
     w = length[body].astype(np.float64)
     grid, dens = _density(level[body], w, bandwidth)
@@ -125,10 +138,24 @@ def classify_lines(
 
     thr = float(grid[vall[hi - 1]]) if hi > 0 else None
     thick = level > thr if thr is not None else np.ones(len(level), bool)
+    bridge = _bridges(g, thick, level, max_kink_deg)
+    thick = thick | bridge
     hump = np.searchsorted(grid[vall], level[body], side="right")  # номер горки: между соседними долинами
     masses = np.bincount(hump, weights=w, minlength=len(sig)) / w.sum()
     return LineClasses(
-        thick, level, length, frame, thr, grid[sig], grid[np.setdiff1d(pk, sig)], grid[vall], masses, hi, grid, dens
+        thick,
+        level,
+        length,
+        frame,
+        thr,
+        grid[sig],
+        grid[np.setdiff1d(pk, sig)],
+        grid[vall],
+        masses,
+        hi,
+        grid,
+        dens,
+        bridge,
     )
 
 
@@ -141,6 +168,38 @@ def _levels(g, dist):
         t, _ = junction_free(t_px[pix], g.degrees[pix])
         level[i] = np.exp(np.log(np.maximum(t, 1.0)).mean())  # среднее геометрическое: толщина мультипликативна
     return level, g.path_lengths().astype(np.float32)
+
+
+def _bridges(g, thick, level, max_kink_deg):
+    """Короткие тонкие пути между толстыми: с обоих концов толстые, хотя бы с одного - продолжение по прямой."""
+    ends: dict[int, list[tuple[int, bool]]] = {}
+    for i in range(g.n_paths):
+        pix = g.path(i)
+        ends.setdefault(int(pix[0]), []).append((i, False))
+        ends.setdefault(int(pix[-1]), []).append((i, True))
+    cos_lim = np.cos(np.radians(180.0 - max_kink_deg))  # продолжение: направления наружу почти противоположны
+    out = np.zeros(g.n_paths, bool)
+    for i in np.flatnonzero(~thick):
+        pix = g.path(i)
+        yx = g.coordinates[pix]
+        nb = [[(j, e) for j, e in ends[int(pix[-1] if at_end else pix[0])] if j != i and thick[j]] for at_end in (0, 1)]
+        if not (nb[0] and nb[1]) or len(pix) >= 3 * np.median([level[j] for side in nb for j, _ in side]):
+            continue
+        straight = (
+            np.dot(_out_dir(yx, at_end), _out_dir(g.coordinates[g.path(j)], e)) <= cos_lim
+            for at_end in (0, 1)
+            for j, e in nb[at_end]
+        )
+        out[i] = any(straight)
+    return out
+
+
+def _out_dir(yx, at_end, k=4):
+    """Единичное направление пути наружу через конец (at_end) или начало, по k точкам."""
+    p = yx if at_end else yx[::-1]
+    d = p[-1] - p[max(len(p) - 1 - k, 0)]
+    n = np.hypot(*d)
+    return d / n if n else d
 
 
 def _frame(g, shape, frame_span):
