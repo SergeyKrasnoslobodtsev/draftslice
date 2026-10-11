@@ -11,17 +11,18 @@
 кодом один раз на пачку изображений, а не пересоздаётся внутри `run()` на каждый вызов.
 """
 
+import numpy as np
+
 from draftslice.core.ocr.engine import OCREngine, OcrResult
 from draftslice.core.ocr.result_filtering import filter_results
-from draftslice.core.types import Mat
 
 
-def run(image: Mat, engine: OCREngine, iou_threshold: float = 0.3) -> list[OcrResult]:
+def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> list[OcrResult]:
     """Распознаёт текст на чертеже.
 
     Parameters
     ----------
-    image : Mat
+    image : np.ndarray
         Изображение чертежа (RGB).
     engine : OCREngine
         Заранее созданный движок распознавания.
