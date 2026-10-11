@@ -4,8 +4,7 @@ import cv2
 import numpy as np
 from paddleocr import PaddleOCR
 
-from draftslice.core.types import Array2D, Mat
-from draftslice.core.utils.image_utils import rotate_image
+from draftslice.core.utils.ops import rotate_image
 
 
 @dataclass
@@ -49,17 +48,17 @@ class OcrResult:
         Распознанный текст.
     confidence : float
         Достоверность распознавания.
-    poly : Array2D[np.float32]
+    poly : np.ndarray[float32]
         Четырёхугольник текстовой строки (4 точки, строка/столбец) в системе координат
         исходного изображения, переданного в `OCREngine.recognize`.
     """
 
     text: str
     confidence: float
-    poly: Array2D[np.float32]
+    poly: np.ndarray
 
 
-def _polys_to_original(polys: list[Array2D[np.float32]], mat: Array2D[np.float32]) -> list[Array2D[np.float32]]:
+def _polys_to_original(polys: list[np.ndarray], mat: np.ndarray) -> list[np.ndarray]:
     """Переводит точки полигонов из системы координат повёрнутого изображения в исходную."""
     inv = cv2.invertAffineTransform(mat)
     return [cv2.transform(np.array([poly], dtype=np.float32), inv)[0] for poly in polys]
@@ -91,12 +90,12 @@ class OCREngine:
             **kwargs,
         )
 
-    def recognize(self, image: Mat) -> list[OcrResult]:
+    def recognize(self, image: np.ndarray) -> list[OcrResult]:
         """Распознаёт текст на изображении, прогоняя несколько поворотов листа.
 
         Parameters
         ----------
-        image : Mat
+        image : np.ndarray
             Исходное изображение чертежа (RGB).
 
         Returns
