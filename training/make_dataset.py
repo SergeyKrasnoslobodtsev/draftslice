@@ -12,6 +12,8 @@ val видел бы обучающие листы. Листы выбираютс
 Полигоны обрезаются по плитке; объект остаётся, если в плитке не меньше `min_area` его площади. Плитка, в которой
 есть обрезанный, но не оставленный объект, фоном не берётся: иначе в ней стрелка была бы видна, но не размечена.
 
+`grid()` публичная: инференс (`infer.py`) режет лист той же сеткой.
+
 Запуск: python training/make_dataset.py [--src data/dataset] [--tile 640 | --no-tile] [--overlap 0.2]
 """
 
@@ -161,7 +163,8 @@ def _read_sheets(src: Path, n_cls: int) -> dict[str, tuple[Path, list[tuple[int,
     if not folder.is_dir():
         raise FileNotFoundError(f"Нет папки изображений: {folder}")
     sheets = {}
-    for img in sorted(p for p in folder.iterdir() if p.suffix.lower() in IMG_EXT):
+    # скрытые файлы - служебные macOS (._name.jpg рядом с name.jpg после копирования с Mac), не листы
+    for img in sorted(p for p in folder.iterdir() if p.suffix.lower() in IMG_EXT and not p.name.startswith(".")):
         label = src / "labels" / f"{img.stem}.txt"
         if not label.is_file():
             raise FileNotFoundError(f"Нет разметки для {img.name}: {label}")
@@ -264,7 +267,7 @@ def _write_tiles(
     pos, neg = [], []
     for s in group:
         h, w = shapes[s]
-        for box in _grid(h, w, tile, overlap):
+        for box in grid(h, w, tile, overlap):
             lines, ambiguous = _tile_labels(sheets[s][1], box, w, h, min_area)
             if lines:
                 pos.append((s, box, lines))
@@ -287,8 +290,23 @@ def _write_tiles(
     return len(chosen)
 
 
-def _grid(h: int, w: int, tile: int, overlap: float) -> list[tuple[int, int, int, int]]:
-    """Плитки (x0, y0, x1, y1) как у `sahi.slicing.get_slice_bboxes`: последняя плитка прижата к краю."""
+def grid(h: int, w: int, tile: int, overlap: float) -> list[tuple[int, int, int, int]]:
+    """Сетка плиток листа, как у `sahi.slicing.get_slice_bboxes`: последняя плитка в ряду прижата к краю.
+
+    Parameters
+    ----------
+    h, w : int
+        Высота и ширина листа, px.
+    tile : int
+        Сторона плитки, px. Если лист меньше плитки, плитка обрезается по листу.
+    overlap : float
+        Перекрытие соседних плиток, доля стороны, в [0, 1).
+
+    Returns
+    -------
+    list[tuple[int, int, int, int]]
+        Плитки (x0, y0, x1, y1) построчно, сверху вниз и слева направо.
+    """
     ov = int(overlap * tile)
     boxes, y_min, y_max = [], 0, 0
     while y_max < h:
