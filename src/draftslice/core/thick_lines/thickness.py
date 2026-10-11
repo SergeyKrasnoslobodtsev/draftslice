@@ -1,22 +1,20 @@
 import numpy as np
 from skan import Skeleton
 
-from draftslice.core.types import Array, Array2D
 
-
-def skeleton_thickness(g: Skeleton, dist: Array2D[np.float32]) -> Array[np.float32]:
+def skeleton_thickness(g: Skeleton, dist: np.ndarray) -> np.ndarray:
     """Толщина в каждом пикселе скелета.
 
     Parameters
     ----------
     g : Skeleton
         Граф скелета skan.
-    dist : Array2D[np.float32]
+    dist : np.ndarray[float32]
         Расстояние до фона по краске (cv2.distanceTransform), px.
 
     Returns
     -------
-    Array[np.float32]
+    np.ndarray[float32]
         (P,) 2·dist по id пикселя skan — одна выборка на весь скелет.
     """
     rc = g.coordinates.astype(np.intp)
