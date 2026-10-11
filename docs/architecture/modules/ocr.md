@@ -7,14 +7,14 @@ PaddleOCR.
 
 ```mermaid
 flowchart TD
-    A["image: Mat (RGB)"] --> B["OCREngine.recognize"]
+    A["image: np.ndarray (RGB)"] --> B["OCREngine.recognize"]
     B -->|"list[OcrResult], сырые, с дублями и мусором"| C["filter_results"]
     C -->|"list[OcrResult]"| D["..."]
 ```
 
 | Шаг | Функция | Вход | Выход |
 |---|---|---|---|
-| 1. Распознавание по поворотам | `OCREngine.recognize` | `Mat` (RGB) | `list[OcrResult]` (сырые) |
+| 1. Распознавание по поворотам | `OCREngine.recognize` | `np.ndarray` (RGB) | `list[OcrResult]` (сырые) |
 | 2. Фильтрация и слияние дублей | `filter_results` | `list[OcrResult]` | `list[OcrResult]` |
 
 `run()` композирует оба шага и возвращает финальный список - без промежуточных сырых результатов.
@@ -33,7 +33,7 @@ flowchart TD
 
 Вместо этого `OCREngine.recognize` прогоняет полный цикл детекция+распознавание на каждом угле
 из `PaddleOCRParameters.angles` (по умолчанию `(0, 90, 270)`) - для каждого поворота лист
-поворачивается целиком (`core/utils/image_utils.rotate_image`, холст расширяется под новый
+поворачивается целиком (`core/utils/ops.rotate_image`, холст расширяется под новый
 размер), запускается `PaddleOCR.predict`, а найденные `rec_polys` переводятся обратной матрицей
 поворота (`cv2.invertAffineTransform`) обратно в систему координат исходного `image` - другие
 модули всегда получают `OcrResult.poly` в одной и той же (исходной) системе координат, независимо

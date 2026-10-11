@@ -7,21 +7,22 @@ OCR и классификации толщины линий.
 
 ```mermaid
 flowchart LR
-    io["core.io<br/>load_image"] --> RS["core.region_seg<br/>сегментация на виды"]
-    io --> OCR["core.ocr<br/>распознавание текста"]
+    io["core.io<br/>load_image"] --> OCR["core.ocr<br/>распознавание текста"]
     io --> PP["core.preprocess<br/>серое, бинаризация, масштаб"]
-    RS -->|"list[Crop]"| Next["..."]
-    OCR -->|"list[OcrResult]"| Next
+    io --> DN["core.denoise<br/>стрелки, удаление шума, виды"]
     OCR -->|"полигоны текста"| TL["core.thick_lines<br/>граф линий, толстые и тонкие"]
+    PP --> TL
+    TL -->|"граф, классы линий"| DN
+    OCR -->|"полигоны текста"| DN
 ```
 
 | Модуль | Роль | Вход | Выход |
 |---|---|---|---|
-| `core.io` | Загрузка изображения из пути, байтов или готовой матрицы | `str \| bytes \| Mat` | `Mat` |
-| `core.preprocess` | Серое, бинаризация и нормализация масштаба по толщине контура | `Mat` (RGB) | `Preprocessed` |
-| `core.region_seg` | Сегментация чертежа на большие сегменты — виды детали | `Mat` (RGB) | `list[Crop]` |
-| `core.ocr` | Распознавание текста на чертеже (в т.ч. повёрнутого) через PaddleOCR | `Mat` (RGB) | `list[OcrResult]` |
-| `core.thick_lines` | Граф линий по маске краски и деление линий на толстые (контур) и тонкие | маска краски `0/255` без текста, `dist` | `Skeleton`, `LineClasses` |
+| `core.io` | Загрузка изображения из пути, байтов или готовой матрицы | `str \| Path \| bytes \| np.ndarray` | `np.ndarray` RGB |
+| `core.preprocess` | Серое, бинаризация и нормализация масштаба по толщине контура | `np.ndarray` (RGB) | `Preprocessed` |
+| `core.ocr` | Распознавание текста на чертеже (в т.ч. повёрнутого) через PaddleOCR | `np.ndarray` (RGB) | `list[OcrResult]` |
+| `core.thick_lines` | Граф линий по маске краски и деление линий на толстые (контур) и тонкие | маска краски `0/255` без текста, `dist`, `t_c` | `Skeleton`, `LineClasses` |
+| `core.denoise` | Удаление шума: `ArrowModel` — стрелки моделью YOLO-seg (ONNX) по плиткам; `Sheet` — правила (стрелки, таблицы, обозначения) и чистая краска из оставленных путей скелета; `Views` — виды для ViT из исходного листа | `np.ndarray` (RGB, исходный масштаб); маска краски, граф, `dist`, классы, OCR | `ArrowResult`; `Sheet.clean` `0/255`; `Views` |
 
 Подробности каждого модуля — в [`modules/`](modules/), история решений и открытые проблемы —
 в [`decisions/`](decisions/).
@@ -30,11 +31,10 @@ flowchart LR
 
 Используются несколькими модулями, сами по себе не являются самодостаточным модулем пайплайна:
 
-- `core/types.py` — общие type alias (`Mat`, `Array`, `Array2D`).
-- `core/exceptions.py` — `DraftsliceException` и наследники (`DraftsliceValueError`,
-  `DraftsliceTypeError`, `DraftsliceRuntimeError`, `ArrayNullError`,
-  `DraftsliceFileNotFoundError`) — переопределяют built-in имена внутри пространства имён
-  библиотеки; `except DraftsliceException` ловит все ошибки библиотеки разом.
-- `core/validators.py` — `validate_image`, декоратор валидации изображений по каналам/dtype.
-- `core/utils/image_utils.py` — переиспользуемые примитивы над изображением
-  (`dilate_image`, `rotate_image`). Серое и бинаризация живут в `core.preprocess`.
+- `core/io.py` — `load_image`: лист RGB из пути, байтов или готового массива.
+- `core/utils/checks.py` — проверки входа (`check_image`), как `ultralytics.utils.checks`: явный вызов в начале
+  функции, ошибка — встроенное исключение (`TypeError`, `ValueError`).
+- `core/utils/ops.py` — операции над изображением (`rotate_image`).
+
+Своих alias типов и иерархии исключений нет: аннотации — `np.ndarray`, форма и dtype — в докстринге; ошибки —
+встроенные исключения.
