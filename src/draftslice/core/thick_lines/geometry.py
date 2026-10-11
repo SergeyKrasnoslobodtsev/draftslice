@@ -2,8 +2,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from draftslice.core.types import Array, Array2D
-
 
 @dataclass(frozen=True, eq=False)
 class Circle:
@@ -11,7 +9,7 @@ class Circle:
 
     Attributes
     ----------
-    center : Array[np.float32]
+    center : np.ndarray[float32]
         (2,) центр (row, col); у прямой nan.
     r : float
         Радиус, px; у прямой inf.
@@ -19,18 +17,18 @@ class Circle:
         СКО расстояний точек до окружности, делённое на r; у прямой 0.
     """
 
-    center: Array[np.float32]
+    center: np.ndarray
     r: float
     rel_err: float
 
 
 # публичные: их вызывает graph.py
-def direction_from_node(p: Array2D[np.int64], k: int, tol_deg: float = 15.0, win: int = 3) -> Array[np.float32]:
+def direction_from_node(p: np.ndarray, k: int, tol_deg: float = 15.0, win: int = 3) -> np.ndarray:
     """Направление ветки от узла, без загиба скелета.
 
     Parameters
     ----------
-    p : Array2D[np.int64]
+    p : np.ndarray[int64]
         (N, 2) точки ветки (row, col) по порядку обхода, p[0] — узел.
     k : int
         Масштаб хорды, точек пути; ≈ полутолщина линии.
@@ -41,7 +39,7 @@ def direction_from_node(p: Array2D[np.int64], k: int, tol_deg: float = 15.0, win
 
     Returns
     -------
-    Array[np.float32]
+    np.ndarray[float32]
         (2,) единичное направление от узла наружу. Ветка короче 3k — по всей длине.
         Меньше двух точек для направления — (0, 0): такой конец не соосен ни с одним.
     """
@@ -53,29 +51,29 @@ def direction_from_node(p: Array2D[np.int64], k: int, tol_deg: float = 15.0, win
 
 
 def are_coaxial(
-    dir_a: Array2D[np.float32],
-    dir_b: Array2D[np.float32],
+    dir_a: np.ndarray,
+    dir_b: np.ndarray,
     max_angle_deg: float = 20.0,
-) -> Array[np.bool_]:
+) -> np.ndarray:
     """Ветки продолжают друг друга в узле: направления от узла почти противоположны.
 
     Parameters
     ----------
-    dir_a, dir_b : Array2D[np.float32]
+    dir_a, dir_b : np.ndarray[float32]
         (N, 2) единичные направления концов от узла наружу; допустимо и (2,).
     max_angle_deg : float
         Наибольший излом между ветками, градусы.
 
     Returns
     -------
-    Array[np.bool_]
+    np.ndarray[bool]
         (N,) излом не больше max_angle_deg.
     """
     cos = np.einsum("...i,...i->...", dir_a, dir_b)
     return cos <= -np.cos(np.deg2rad(max_angle_deg))
 
 
-def fit_circle(p: Array2D[np.int64], n_iter: int = 10, straight_px: float = 1.5) -> Circle:
+def fit_circle(p: np.ndarray, n_iter: int = 10, straight_px: float = 1.5) -> Circle:
     """Окружность по точкам ветки.
 
     Старт — метод Каса, затем уточнение по геометрическому расстоянию (Гаусс–Ньютон):
@@ -83,7 +81,7 @@ def fit_circle(p: Array2D[np.int64], n_iter: int = 10, straight_px: float = 1.5)
 
     Parameters
     ----------
-    p : Array2D[np.int64]
+    p : np.ndarray[int64]
         (N, 2) точки ветки (row, col).
     n_iter : int
         Наибольшее число итераций Гаусса–Ньютона.
@@ -120,12 +118,12 @@ def fit_circle(p: Array2D[np.int64], n_iter: int = 10, straight_px: float = 1.5)
     return Circle(center=x[:2] + o, r=r, rel_err=rel_err)
 
 
-def is_arc(p: Array2D[np.int64], c: Circle, max_err: float = 0.05, min_arc_deg: float = 30.0) -> bool:
+def is_arc(p: np.ndarray, c: Circle, max_err: float = 0.05, min_arc_deg: float = 30.0) -> bool:
     """Ветка — дуга: хорошо ложится на окружность и заметно изогнута.
 
     Parameters
     ----------
-    p : Array2D[np.int64]
+    p : np.ndarray[int64]
         (N, 2) точки ветки (row, col).
     c : Circle
         Окружность из fit_circle(p).
@@ -145,26 +143,26 @@ def is_arc(p: Array2D[np.int64], c: Circle, max_err: float = 0.05, min_arc_deg: 
 
 
 def circles_match(
-    ca: Array2D[np.float32],
-    ra: Array[np.float32],
-    cb: Array2D[np.float32],
-    rb: Array[np.float32],
+    ca: np.ndarray,
+    ra: np.ndarray,
+    cb: np.ndarray,
+    rb: np.ndarray,
     tol: float = 0.1,
-) -> Array[np.bool_]:
+) -> np.ndarray:
     """Окружности попарно совпадают: центры и радиусы в пределах tol · R, R — средний радиус пары.
 
     Parameters
     ----------
-    ca, cb : Array2D[np.float32]
+    ca, cb : np.ndarray[float32]
         (N, 2) центры окружностей.
-    ra, rb : Array[np.float32]
+    ra, rb : np.ndarray[float32]
         (N,) радиусы.
     tol : float
         Допуск в долях среднего радиуса.
 
     Returns
     -------
-    Array[np.bool_]
+    np.ndarray[bool]
         (N,) пара совпадает; прямые (nan, inf) не совпадают ни с чем.
     """
     r = 0.5 * (ra + rb)
