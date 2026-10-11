@@ -7,12 +7,11 @@ from skan.csr import PathGraph
 
 import draftslice.core.thick_lines.geometry as geom
 import draftslice.core.thick_lines.thickness as thick
-from draftslice.core.types import Array, Array2D
 
 
 def build_graph(
-    mask: Array2D[np.uint8],
-    dist: Array2D[np.float32],
+    mask: np.ndarray,
+    dist: np.ndarray,
     max_kink_deg: float = 20.0,
     tol: float = 0.1,
     thick_ratio: float = 1.3,
@@ -37,9 +36,9 @@ def build_graph(
 
     Parameters
     ----------
-    mask : Array2D[np.uint8]
+    mask : np.ndarray[uint8]
         Маска краски без текста, 0/255.
-    dist : Array2D[np.float32]
+    dist : np.ndarray[float32]
         Расстояние до фона по краске (cv2.distanceTransform), px: толщина линий и радиус пятна узла.
     max_kink_deg : float
         Наибольший излом между соосными ветками, градусы.
@@ -81,10 +80,10 @@ def build_graph(
 
 def coaxial_pairs(
     g: Skeleton,
-    dist: Array2D[np.float32],
+    dist: np.ndarray,
     max_kink_deg: float = 30.0,
     tol: float = 0.1,
-) -> Array2D[np.int64]:
+) -> np.ndarray:
     """Пары путей, соосных в узле, — без учёта толщины.
 
     Те же пары концов в узлах, что у build_graph, но по путям графа g, а не по его веткам. Граф не меняется.
@@ -93,7 +92,7 @@ def coaxial_pairs(
     ----------
     g : Skeleton
         Граф скелета skan, обычно результат build_graph.
-    dist : Array2D[np.float32]
+    dist : np.ndarray[float32]
         Расстояние до фона по краске (cv2.distanceTransform), px.
     max_kink_deg : float
         Наибольший излом между соосными путями, градусы. Мягче, чем в build_graph: у пятна узла
@@ -103,7 +102,7 @@ def coaxial_pairs(
 
     Returns
     -------
-    Array2D[np.int64]
+    np.ndarray[int64]
         (n, 4) строки [путь a, сторона a, путь b, сторона b]; сторона 0 — начало пути, 1 — конец.
     """
     k = _dir_scale(thick.skeleton_thickness(g, dist))
@@ -111,14 +110,14 @@ def coaxial_pairs(
     return np.array([(*u, *v) for u, v in links.items() if u < v], np.int64).reshape(-1, 4)
 
 
-def replace_paths(g: Skeleton, pix: list[Array[np.int32]]) -> Skeleton:
+def replace_paths(g: Skeleton, pix: list[np.ndarray]) -> Skeleton:
     """Тот же скелет, пути заменены.
 
     Parameters
     ----------
     g : Skeleton
         Граф скелета skan: пиксели, связи и координаты берутся из него.
-    pix : list[Array[np.int32]]
+    pix : list[np.ndarray[int32]]
         Новые пути: id пикселей g подряд, соседние точки связаны ребром g.
 
     Returns
@@ -220,14 +219,17 @@ def _without_duplicates(g):
 def _merge_close_nodes(g, dist):
     """
     Стык, распавшийся на несколько узлов, стягивается в один узел.
-    Перемычка — ветка между двумя узлами короче суммы радиусов пятен (dist) на её концах: пятна
-    перекрываются, это один стык. Узлы, связанные перемычками, вместе с пикселями перемычек становятся
-    одним узлом — пикселем группы, ближайшим к её средней точке; skan заново собирает ветки.
+    Перемычка — ветка между двумя узлами, целиком покрытая пятнами этих узлов: пятно узла — ceil(dist)
+    точек ветки от узла, как в junction_free. В такой ветке скелет мерил только стык (разрез по толщине её не
+    трогает), это один стык: иначе склейка по соосности могла отдать кусок толстой линии между узлами
+    косо пересекающей её тонкой. Узлы, связанные перемычками, вместе с пикселями перемычек становятся одним
+    узлом — пикселем группы, ближайшим к её средней точке; skan заново собирает ветки.
     """
     ip, idx, deg, yx = g.paths.indptr, g.paths.indices, g.degrees, g.coordinates
     a, b = idx[ip[:-1]], idx[ip[1:] - 1]
-    r = dist[yx[:, 0], yx[:, 1]]
-    bridge = np.flatnonzero((deg[a] >= 3) & (deg[b] >= 3) & (a != b) & (g.path_lengths() <= r[a] + r[b]))
+    r = np.ceil(dist[yx[:, 0], yx[:, 1]])  # пятно узла, точек
+    inner = np.diff(ip) - 2  # точек ветки между её узлами
+    bridge = np.flatnonzero((deg[a] >= 3) & (deg[b] >= 3) & (a != b) & (inner <= r[a] + r[b]))
     if bridge.size == 0:
         return g
 
