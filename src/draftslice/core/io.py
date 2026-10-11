@@ -1,57 +1,69 @@
-import os
+from pathlib import Path
 
-from draftslice.core.exceptions import DraftsliceFileNotFoundError, DraftsliceValueError, IORuntimeError
-from draftslice.core.types import Mat
+import cv2
+import numpy as np
 
 
-def load_image(filename: str | bytes | Mat) -> Mat:
-    """Загружает изображение из файла, из байтового массива или возвращает его, если это уже Mat.
+def load_image(src: str | Path | bytes | np.ndarray) -> np.ndarray:
+    """Загружает лист RGB из файла, из байтов или возвращает готовый массив.
 
     Parameters
     ----------
-    filename : str | bytes | Mat
-        Изображение в виде пути к файлу, байтового массива или объекта Mat.
+    src : str | Path | bytes | np.ndarray
+        Путь к файлу, байты файла изображения или массив `(H, W, 3)`.
 
     Returns
     -------
-    Mat
-        Загруженное изображение в формате Mat.
+    np.ndarray
+        Лист RGB `(H, W, 3)`, `uint8`.
 
     Raises
     ------
-    DraftsliceFileNotFoundError
-        Если файл не найден.
-    DraftsliceValueError
-        Если изображение не удалось загрузить или имеет неверный формат.
-    DraftsliceValueError
-        Если изображение не является цветным изображением с тремя каналами.
-    IORuntimeError
-        Если произошла ошибка ввода-вывода при загрузке изображения.
+    FileNotFoundError
+        Файла нет.
+    ValueError
+        Изображение не декодируется или массив не трёхканальный.
     """
-    img = None
-
-    if isinstance(filename, str):
-        import cv2
-        import numpy as np
-
-        if not os.path.exists(filename):
-            raise DraftsliceFileNotFoundError(f"Файл не найден: {filename}")
-
-        buffer = np.fromfile(filename, dtype=np.uint8)
-        img = cv2.imdecode(buffer, cv2.IMREAD_COLOR_RGB)
-
-    if isinstance(filename, bytes):
-        import cv2
-        import numpy as np
-
-        buffer = np.frombuffer(filename, dtype=np.uint8)
-        img = cv2.imdecode(buffer, cv2.IMREAD_COLOR_RGB)
-
-    if isinstance(filename, Mat):  # type: ignore
-        if filename.ndim != 3 or filename.shape[-1] != 3:
-            raise DraftsliceValueError(f"Неверный формат изображения {filename}")
-        img = filename
-
+    if isinstance(src, np.ndarray):
+        if src.ndim != 3 or src.shape[-1] != 3:
+            raise ValueError(f"Ожидается RGB (H, W, 3), получено: {src.shape}")
+        return src
+    if isinstance(src, (str, Path)):
+        if not Path(src).is_file():
+            raise FileNotFoundError(f"Файл не найден: {src}")
+        buf = np.fromfile(src, dtype=np.uint8)  # не cv2.imread: путь с кириллицей на Windows
+    else:
+        buf = np.frombuffer(src, dtype=np.uint8)
+    img = cv2.imdecode(buf, cv2.IMREAD_COLOR_RGB)
     if img is None:
-        raise IORuntimeError(f"Не удалось загрузить {filename}")
+        raise ValueError(f"Не удалось декодировать изображение: {src if isinstance(src, (str, Path)) else 'bytes'}")
     return img
+
+
+def save_image(path: str | Path, img: np.ndarray) -> Path:
+    """Сохраняет лист RGB или маску в файл; формат - по расширению.
+
+    Parameters
+    ----------
+    path : str | Path
+        Путь файла; папки создаются.
+    img : np.ndarray
+        RGB `(H, W, 3)` или маска `(H, W)`, `uint8`.
+
+    Returns
+    -------
+    Path
+        Путь сохранённого файла.
+
+    Raises
+    ------
+    ValueError
+        Изображение не кодируется в формат расширения.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ok, buf = cv2.imencode(path.suffix, cv2.cvtColor(img, cv2.COLOR_RGB2BGR) if img.ndim == 3 else img)
+    if not ok:
+        raise ValueError(f"Не удалось закодировать изображение в {path.suffix}")
+    buf.tofile(path)  # не cv2.imwrite: путь с кириллицей на Windows
+    return path
