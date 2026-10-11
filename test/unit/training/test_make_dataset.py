@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from conftest import H, W, _write_sheet, triangle
 
-from training.make_dataset import _area, _clip, _grid, make_dataset
+from training.make_dataset import _area, _clip, grid, make_dataset
 
 
 def _names(folder):
@@ -88,8 +88,8 @@ def test_val_keeps_all_background_tiles_and_train_is_limited(export, tmp_path):
     none = make_dataset(export, tmp_path / "a", tile=64, bg_ratio=0.0, val=["3"])
     all_bg = make_dataset(export, tmp_path / "b", tile=64, bg_ratio=100.0, val=["3"])
 
-    grid = len(_grid(H, W, 64, 0.2))
-    assert all_bg.images["val"] == none.images["val"] == grid  # в val фон не прореживается
+    n_tiles = len(grid(H, W, 64, 0.2))
+    assert all_bg.images["val"] == none.images["val"] == n_tiles  # в val фон не прореживается
     pos_train = sum(1 for p in (tmp_path / "a" / "labels" / "train").iterdir() if p.read_text(encoding="utf-8").strip())
     assert none.images["train"] == pos_train
     assert all_bg.images["train"] > none.images["train"]
@@ -125,7 +125,7 @@ def test_missing_label_raises(export, tmp_path):
 
 @pytest.mark.parametrize(("h", "w"), [(150, 200), (518, 1085), (919, 1475), (30, 40), (640, 640), (641, 1280)], ids=str)
 def test_grid_covers_image_and_aligns_to_edge(h, w):
-    boxes = _grid(h, w, 64, 0.2)
+    boxes = grid(h, w, 64, 0.2)
 
     cover = np.zeros((h, w), bool)
     for x0, y0, x1, y1 in boxes:
@@ -140,7 +140,7 @@ def test_grid_matches_sahi(h, w):
 
     ref = get(h, w, slice_height=640, slice_width=640, overlap_height_ratio=0.2, overlap_width_ratio=0.2)
 
-    assert sorted(map(tuple, ref)) == sorted(_grid(h, w, 640, 0.2))
+    assert sorted(map(tuple, ref)) == sorted(grid(h, w, 640, 0.2))
 
 
 def test_clip_inside_outside_and_straddling():
@@ -161,3 +161,12 @@ def test_clip_matches_shapely_on_random_triangles():
         want = geometry.Polygon(tri).intersection(geometry.box(*box)).area
         got = _area(_clip(tri, box))
         assert got == pytest.approx(want, abs=1e-6)
+
+
+def test_hidden_macos_files_are_not_sheets(export, tmp_path):
+    (export / "images" / "._aa-1.png").write_bytes(b"\x00\x05\x16\x07\xb0")
+    (export / "labels" / "._aa-1.txt").write_bytes(b"\x00\x05\x16\x07\xb0")
+
+    res = make_dataset(export, tmp_path / "d", tile=None)
+
+    assert set(res.objects) == {"aa-1", "bb-2", "cc-3", "dd-4"}

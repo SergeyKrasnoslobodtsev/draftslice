@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-from draftslice.core.exceptions import DraftsliceTypeError, DraftsliceValueError
 from draftslice.core.preprocess import preprocess
 
 
@@ -46,7 +45,7 @@ def test_colored_line_becomes_dark(color):
 
 
 def test_grayscale_input_raises():
-    with pytest.raises(DraftsliceTypeError):
+    with pytest.raises(TypeError):
         preprocess(np.zeros((3, 3), np.uint8))
 
 
@@ -73,7 +72,7 @@ def test_thickness_takes_top_hump_not_medium_lines():
 
 
 def test_no_ink_raises():
-    with pytest.raises(DraftsliceValueError):
+    with pytest.raises(ValueError):
         preprocess(np.full((50, 50, 3), 255, np.uint8))
 
 
@@ -123,5 +122,5 @@ def test_caps_upscale():
     [{"target": 0}, {"tol": -0.1}, {"min_t": 0}, {"max_scale": 0.5}, {"top_share": 0}, {"top_share": 1}],
 )
 def test_bad_params_raise(kwargs):
-    with pytest.raises(DraftsliceValueError):
+    with pytest.raises(ValueError):
         preprocess(_sheet(6), **kwargs)
