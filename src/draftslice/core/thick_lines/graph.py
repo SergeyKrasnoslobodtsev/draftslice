@@ -30,8 +30,10 @@ def build_graph(
     стягивается в один узел. После каждой правки skan заново собирает ветки.
     Затем в каждом узле концы веток объединяются в пары: сначала дуги одной окружности, затем
     соосные концы от меньшего излома; толщина пары не учитывается. Пары собираются в цепочки.
-    Каждая цепочка режется по профилю толщины (без пятен стыков): бинарным разбиением, где средние
-    толщины двух частей различаются больше чем в thick_ratio раз. Куски становятся путями графа.
+    Каждая цепочка режется по профилю толщины (без пятен стыков). Сначала по узлам: ветка, средняя
+    толщина которой вне пятен отличается от остальной цепочки больше чем в thick_ratio раз, — отдельный
+    кусок (короткий толстый кусок между двумя пересечениями). Затем каждый кусок — бинарным разбиением,
+    где средние толщины двух частей различаются больше чем в thick_ratio раз. Куски становятся путями графа.
 
     Parameters
     ----------
@@ -63,11 +65,16 @@ def build_graph(
     k = _dir_scale(2 * dist[skel > 0])
     links = _link_ends(g, dist, k, max_kink_deg, tol)
     t_px = thick.skeleton_thickness(g, dist)
+    ip = g.paths.indptr
     pieces = []
     for chain, _ in _build_chains(g.n_paths, links):
         pix = _chain_pix(g, chain)
-        t, _ = thick.junction_free(t_px[pix], g.degrees[pix])
-        bounds = [0, *_level_cuts(t, thick_ratio), len(pix) - 1]
+        t, spots = thick.junction_free(t_px[pix], g.degrees[pix])
+        ends = np.cumsum([ip[p + 1] - ip[p] - 1 for p, _ in chain])  # последняя точка каждой ветки в pix
+        nodes = [0, *_branch_cuts(t, spots, ends, thick_ratio), len(pix) - 1]
+        bounds = [0]
+        for a, b in zip(nodes[:-1], nodes[1:], strict=True):
+            bounds += [a + c for c in _level_cuts(t[a : b + 1], thick_ratio)] + [b]
         pieces += [pix[a : b + 1] for a, b in zip(bounds[:-1], bounds[1:], strict=True)]
     return replace_paths(g, pieces)
 
@@ -285,6 +292,24 @@ def _match_ends(dirs, centers, radii, max_kink_deg, tol):
             used[i] = used[j] = True
             pairs.append((int(i), int(j)))
     return pairs
+
+
+def _branch_cuts(t, spots, ends, thick_ratio):
+    """Узлы цепочки на краях веток, уровень которых отличается от остальной цепочки больше чем в thick_ratio раз.
+
+    Уровень — среднее ln t по точкам вне пятен стыков; ветка без таких точек не режется. ends — последняя
+    точка каждой ветки в профиле цепочки, соседние ветки делят узловую точку.
+    """
+    lt = np.log(np.maximum(t, 1.0))
+    lim = np.log(thick_ratio)
+    cuts = set()
+    for a, b in zip(np.r_[0, ends[:-1]], ends, strict=True):
+        own = np.zeros(len(t), bool)
+        own[a : b + 1] = True
+        x, rest = lt[own & ~spots], lt[~own & ~spots]
+        if x.size and rest.size and abs(x.mean() - rest.mean()) > lim:
+            cuts |= {int(a), int(b)}
+    return sorted(cuts - {0, len(t) - 1})
 
 
 def _level_cuts(t, thick_ratio, min_len=3.0):
