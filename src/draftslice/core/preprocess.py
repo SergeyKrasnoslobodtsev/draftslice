@@ -16,9 +16,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from draftslice.core.exceptions import DraftsliceValueError
-from draftslice.core.types import Mat
-from draftslice.core.validators import validate_image
+from draftslice.core.utils.checks import check_image
 
 
 @dataclass(frozen=True)
@@ -27,11 +25,11 @@ class Preprocessed:
 
     Attributes
     ----------
-    img : Mat
+    img : np.ndarray
         Изображение RGB после масштабирования; то же, что на входе, если масштаб не менялся.
-    gray : Mat
+    gray : np.ndarray
         Серое изображение того же размера, `(H, W)`.
-    binary : Mat
+    binary : np.ndarray
         Маска краски `0/255` того же размера, `(H, W)`.
     scale : float
         Во сколько раз изображение увеличено относительно исходного. Результат анализа в этом масштабе
@@ -40,16 +38,15 @@ class Preprocessed:
         Толщина контура на исходном изображении, px; `None`, если нормализация выключена.
     """
 
-    img: Mat
-    gray: Mat
-    binary: Mat
+    img: np.ndarray
+    gray: np.ndarray
+    binary: np.ndarray
     scale: float
     t_c: float | None
 
 
-@validate_image(channels=3)
 def preprocess(
-    img: Mat,
+    img: np.ndarray,
     target: float | None = 6.0,
     tol: float = 0.15,
     min_t: float = 8.0,
@@ -67,7 +64,7 @@ def preprocess(
 
     Parameters
     ----------
-    img : Mat
+    img : np.ndarray
         Изображение RGB, `(H, W, 3)`.
     target : float | None
         Нужная толщина контура на выходе, px. `None` - не масштабировать, вернуть серое и маску исходника.
@@ -88,14 +85,15 @@ def preprocess(
 
     Raises
     ------
-    DraftsliceTypeError
+    TypeError
         У изображения не три канала.
-    DraftsliceValueError
+    ValueError
         `target`, `tol`, `min_t` не положительны (`tol` не отрицателен), `max_scale` меньше 1, `top_share` вне
         (0, 1) или в изображении нет краски при включённой нормализации.
     """
+    check_image(img, channels=3)
     if target is not None and (target <= 0 or tol < 0 or min_t <= 0 or max_scale < 1 or not 0 < top_share < 1):
-        raise DraftsliceValueError(f"Некорректные параметры: {target=}, {tol=}, {min_t=}, {max_scale=}, {top_share=}.")
+        raise ValueError(f"Некорректные параметры: {target=}, {tol=}, {min_t=}, {max_scale=}, {top_share=}.")
     gray = _gray(img)
     binary = _binarize(gray)
     if target is None:
@@ -113,23 +111,23 @@ def preprocess(
     return Preprocessed(img, gray, _binarize(gray), scale, t_c)
 
 
-def _gray(img: Mat) -> Mat:
+def _gray(img: np.ndarray) -> np.ndarray:
     """Серое минимумом по каналам: светлые цветные линии (жёлтая, оранжевая осевая) остаются тёмными."""
     c0, c1, c2 = cv2.split(img)
     return cv2.min(cv2.min(c0, c1), c2)
 
 
-def _binarize(gray: Mat) -> Mat:
+def _binarize(gray: np.ndarray) -> np.ndarray:
     """Бинаризация Otsu с инверсией: краска 255, фон 0."""
     return cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
 
-def _thickness(binary: Mat, top_share: float) -> float:
+def _thickness(binary: np.ndarray, top_share: float) -> float:
     """Толщина контура: среднее по самой толстой горке скелета, на которую приходится не меньше top_share, px."""
     dist = cv2.distanceTransform(binary, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
     t = 2.0 * dist[cv2.ximgproc.thinning(binary) > 0]
     if t.size == 0:
-        raise DraftsliceValueError("В маске нет краски: нечего мерить.")
+        raise ValueError("В маске нет краски: нечего мерить.")
     bins, cnt = np.unique(np.round(t), return_counts=True)
     ok = bins[cnt >= top_share * t.size]
     top = ok.max() if ok.size else bins[np.argmax(cnt)]
