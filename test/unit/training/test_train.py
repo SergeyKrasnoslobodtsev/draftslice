@@ -22,15 +22,24 @@ class FakeYOLO:
         self.trainer = types.SimpleNamespace(save_dir="runs/out")
 
 
+WEIGHTS_DIR = Path("/w")
+
+
+def _fake_ultralytics(monkeypatch):
+    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    monkeypatch.setitem(sys.modules, "ultralytics.utils", types.SimpleNamespace(SETTINGS={"weights_dir": WEIGHTS_DIR}))
+
+
 class FakeBlur:
     def __init__(self, blur_limit, p):
         self.blur_limit, self.p = blur_limit, p
 
 
 @pytest.fixture
-def fake_libs(monkeypatch):
+def fake_libs(monkeypatch, tmp_path):
     FakeYOLO.last = None
-    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    monkeypatch.chdir(tmp_path)  # веса по имени ищутся и в текущей папке: в корне репозитория они могут лежать
+    _fake_ultralytics(monkeypatch)
     monkeypatch.setitem(sys.modules, "albumentations", types.SimpleNamespace(Blur=FakeBlur))
 
 
@@ -38,11 +47,12 @@ def test_train_passes_data_size_and_augmentations(fake_libs):
     out = train(Path("d/tiles/data.yaml"), imgsz=640, aug=Augment(degrees=90.0, scale=0.7))
 
     kw = FakeYOLO.last.trained
-    assert FakeYOLO.last.model == "yolo26n-seg.pt"
+    assert FakeYOLO.last.model == str(WEIGHTS_DIR / "yolo26n-seg.pt")  # предобученные - в weights_dir
     assert (kw["data"], kw["imgsz"], kw["degrees"], kw["scale"]) == ("d/tiles/data.yaml", 640, 90.0, 0.7)
     assert (kw["hsv_h"], kw["hsv_s"]) == (0.0, 0.0)  # чертежи чёрно-белые
     assert "blur" not in kw
     assert kw["name"] == "tiles_yolo26n-seg_640"
+    assert "project" not in kw  # папка запуска - runs_dir Ultralytics
     assert out == Path("runs/out")
 
 
@@ -54,12 +64,21 @@ def test_blur_becomes_albumentations_transform(fake_libs):
 
 
 def test_no_blur_does_not_need_albumentations(monkeypatch):
-    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    _fake_ultralytics(monkeypatch)
     monkeypatch.setitem(sys.modules, "albumentations", None)  # импорт даёт ImportError
 
     train(Path("d/data.yaml"), aug=Augment(blur=0.0))
 
     assert "augmentations" not in FakeYOLO.last.trained
+
+
+def test_own_weights_path_is_used_as_is(fake_libs, tmp_path):
+    best = tmp_path / "best.pt"
+    best.touch()
+
+    train(Path("d/data.yaml"), model=str(best))
+
+    assert FakeYOLO.last.model == str(best)
 
 
 def test_device_is_passed_only_when_given(fake_libs):
