@@ -54,7 +54,7 @@ classDiagram
     class thickness {
         <<module>>
         +skeleton_thickness(g, dist) ndarray
-        +junction_free(t, deg)
+        +junction_free(t, deg) Profile
     }
     pipeline ..> graph
     pipeline ..> classify
