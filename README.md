@@ -24,11 +24,11 @@
 
 | Раздел | О чём |
 |---|---|
-| [Архитектура](docs/architecture/ARCHITECTURE.md) | Карта пакетов, типы данных, последовательность вызовов |
+| [Архитектура](docs/architecture/ARCHITECTURE.md) | Карта пакетов, типы данных, пайплайн листа `draftslice.pipeline` |
 | [`core.preprocess`](docs/architecture/modules/preprocess.md) | Серое, маска краски, нормализация масштаба |
 | [`core.ocr`](docs/architecture/modules/ocr.md) | Текст на чертеже, в том числе повёрнутый |
 | [`core.thick_lines`](docs/architecture/modules/thick_lines.md) | Граф линий, толстые и тонкие |
-| [`core.denoise`](docs/architecture/modules/denoise.md) | Стрелки, правила чистки, чистый лист и виды |
+| [`core.denoise`](docs/architecture/modules/denoise.md) | Стрелки, текст с маски краски, правила чистки, виды |
 | [Обучение модели стрелок](training/README.md) | Разметка, датасет, обучение, экспорт в ONNX, метрики |
 
 ## Установка
@@ -67,9 +67,9 @@ draftslice views data/images/1.jpg -o runs/views --size 224
 
 ```python
 from draftslice.core.denoise.arrows import ArrowModel
-from draftslice.core.denoise.pipeline import run
 from draftslice.core.io import load_image
 from draftslice.core.ocr.engine import OCREngine, PaddleOCRParameters
+from draftslice.pipeline import run
 
 arrow_model = ArrowModel("models/arrows.onnx")  # модели создаются один раз на пачку листов
 ocr_engine = OCREngine(PaddleOCRParameters())
@@ -82,8 +82,8 @@ res.save("out/sheet.png")
 res.save_views("out/views", "sheet", size=224)  # out/views/sheet_0.png, sheet_1.png, ...
 ```
 
-Отдельные шаги (`preprocess`, `ocr`, `thick_lines`, правила `Sheet`) описаны в
-[документации модулей](docs/architecture/modules/denoise.md#использование).
+Порядок шагов — в [архитектуре](docs/architecture/ARCHITECTURE.md#последовательность-вызовов), отдельные шаги
+(`preprocess`, `ocr`, `thick_lines`, `denoise`) — в документации модулей.
 
 ## Модели
 

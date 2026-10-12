@@ -1,36 +1,23 @@
 # core.denoise
 
-Удаление шума: всего, что не контур детали — стрелок, таблиц, обозначений и текста. Результат — чистый лист в
-исходном масштабе и виды детали для ViT. Главное требование: не повредить контур в местах, где он пересекается или
-касается удаляемой графики.
+Удаление шума: всего, что не контур детали — стрелок, таблиц, обозначений и текста, и нарезка чистой краски на
+виды детали для ViT. Главное требование: не повредить контур в местах, где он пересекается или касается удаляемой
+графики.
+
+Весь лист — от исходного изображения до видов — обрабатывает `draftslice.pipeline.run`
+(см. [последовательность вызовов](../ARCHITECTURE.md#последовательность-вызовов)).
 
 ## Использование
 
 ```python
-from draftslice.core.denoise.arrows import ArrowModel
 from draftslice.core.denoise.pipeline import run
-from draftslice.core.io import load_image
-from draftslice.core.ocr.engine import OCREngine, PaddleOCRParameters
 
-arrow_model = ArrowModel("models/arrows.onnx")  # модели создаются один раз на пачку листов
-ocr_engine = OCREngine(PaddleOCRParameters())
-
-res = run(load_image("sheet.png"), arrow_model, ocr_engine)
-res.clean                             # чистый лист RGB в исходном масштабе, фон белый
-res.views                             # виды для ViT
-res.plot()                            # проверка: чистое как в оригинале, снятое бледным, рамки видов
-res.save("out/sheet.png")
-res.save_views("out/views", "sheet", size=224)  # out/views/sheet_0.png, sheet_1.png, ...
+# lines — thick_lines.Lines, arrows — ArrowResult, polys — полигоны OCR в масштабе lines.ink
+sheet = run(lines, arrows.mask, t_c, polys)
+sheet.clean                      # чистая краска 0/255 в рабочем масштабе
 ```
 
-Из командной строки:
-
-```bash
-draftslice clean data/images -o runs/clean --plot       # {имя}.png, с --plot ещё {имя}_plot.png
-draftslice views data/images/1.jpg -o runs/views --size 224
-```
-
-Правила чистки можно применять по одному, без `run`:
+Правила чистки по одному:
 
 ```python
 # lines — thick_lines.Lines, arrows — ArrowResult, polys — полигоны OCR в масштабе lines.ink
@@ -48,21 +35,7 @@ classDiagram
     direction LR
     class pipeline {
         <<module>>
-        +run(img, arrow_model, ocr_engine, target, max_scale, conf, margin) DenoiseResult
-    }
-    class DenoiseResult {
-        <<frozen dataclass>>
-        +ndarray orig
-        +float scale
-        +Lines lines
-        +ArrowResult arrows
-        +Sheet sheet
-        +Views views
-        +mask ndarray
-        +clean ndarray
-        +plot() ndarray
-        +save(path) Path
-        +save_views(save_dir, stem, size) list
+        +run(lines, arrow_mask, t_c, polys) Sheet
     }
     class ArrowModel {
         +sess InferenceSession
@@ -114,11 +87,7 @@ classDiagram
         +grid(h, w, tile, overlap) list
         +zones(tiles, w, h) dict
     }
-    pipeline --> DenoiseResult : создаёт
-    pipeline ..> text
-    DenoiseResult *-- ArrowResult
-    DenoiseResult *-- Sheet
-    DenoiseResult *-- Views
+    pipeline --> Sheet : создаёт
     ArrowModel ..> tiles
     ArrowModel --> ArrowResult : создаёт
     Sheet --> Segments : создаёт
@@ -128,8 +97,7 @@ classDiagram
 
 | Объект | Файл | Описание |
 |---|---|---|
-| `run(img, arrow_model, ocr_engine, ...)` | `pipeline.py` | Весь лист: текст, масштаб, линии, стрелки, правила, виды |
-| `DenoiseResult` | `pipeline.py` | Результат: исходный лист, промежуточные объекты, `clean`, `plot`, `save`, `save_views` |
+| `run(lines, arrow_mask, t_c, polys)` | `pipeline.py` | Правила чистки: стрелки, таблицы, обозначения |
 | `ArrowModel` | `arrows.py` | YOLO-seg в ONNX: стрелки по плиткам листа |
 | `ArrowResult` | `arrows.py` | Маска стрелок листа, боксы, уверенность |
 | `grid`, `zones` | `tiles.py` | Сетка плиток и зоны плиток для склейки находок без дублей |
@@ -144,13 +112,10 @@ classDiagram
 
 | Аргумент | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `img` | `np.ndarray[uint8]` | — | Лист RGB `(H, W, 3)` в исходном масштабе |
-| `arrow_model` | `ArrowModel` | — | Модель стрелок |
-| `ocr_engine` | `OCREngine` | — | Движок OCR |
-| `target` | `float` | `9.0` | Толщина контура в рабочем масштабе, px (`preprocess`) |
-| `max_scale` | `float` | `2.0` | Наибольшее увеличение листа (`preprocess`) |
-| `conf` | `float` | `0.3` | Порог уверенности стрелок |
-| `margin` | `float` | `3.0` | Отступ вокруг вида, в толщинах контура |
+| `lines` | `Lines` | — | Краска без текста, граф и классы линий в рабочем масштабе (`thick_lines.run`) |
+| `arrow_mask` | `np.ndarray[uint8]` | — | Маска стрелок `0/255` `(h, w)` в любом масштабе листа (`ArrowResult.mask`) |
+| `t_c` | `float` | — | Толщина контура в рабочем масштабе, px |
+| `polys` | `list[np.ndarray]` | — | Полигоны OCR `(4, 2)`, точки `(x, y)` в рабочем масштабе |
 
 `ArrowModel` и `ArrowModel.predict`:
 
@@ -161,7 +126,7 @@ classDiagram
 | `conf` | `float` | `0.25` | Порог уверенности, в [0, 1] |
 | `overlap` | `float` | `0.2` | Перекрытие плиток, доля стороны, в [0, 1); как при обучении |
 
-Пороги правил `Sheet` — именованные аргументы конструктора, как `overrides` у Ultralytics:
+Пороги правил `Sheet` — именованные аргументы конструктора:
 
 | Аргумент | Тип | По умолчанию | Описание |
 |---|---|---|---|
@@ -171,6 +136,9 @@ classDiagram
 | `min_cells` | `int` | `2` | Наименьшее число ячеек таблицы (`tables`) |
 
 ## Место в пайплайне
+
+Шаги `denoise` в `draftslice.pipeline.run`: `clear_text` — до `thick_lines`, `ArrowModel`, `denoise.run` (`Sheet`) и
+`Views` — после.
 
 ```mermaid
 flowchart LR
@@ -205,13 +173,13 @@ $\lfloor y \cdot h_{mask} / h_{ink} \rfloor$ маски — целая част�
     рабочая модель обучена на плитках 640, и `ArrowModel` режет лист той же сеткой (см. [плитки и зоны](#плитки-и-зоны)).
     Модель, обученная на целых листах, `ArrowModel` не рассчитана: вход сети — одна плитка.
 
-Интерфейс — как у Ultralytics: `ArrowModel` грузится один раз, вызывается на листах, возвращает `ArrowResult`
-(`mask`, `xyxy`, `conf`, `len()`, `orig_shape`). Считает onnxruntime-gpu, без CUDA — на CPU.
+`ArrowModel` грузится один раз, вызывается на листах, возвращает `ArrowResult` (`mask`, `xyxy`, `conf`, `len()`,
+`orig_shape`). Считает onnxruntime-gpu, без CUDA — на CPU.
 
 Экспорт со встроенным NMS (`nms=True`) — та же голова и тот же NMS, что у `predict`/`val` Ultralytics на `.pt`,
 поэтому ONNX совпадает с Ultralytics (`retina_masks=True`) по числу объектов, уверенности (до $5 \cdot 10^{-4}$) и
 маскам. Порог уверенности встроенного NMS зашит в граф и ограничивает `conf` снизу, поэтому экспорт идёт с
-`conf=0.001`, как у `val`.
+`conf=0.001`.
 
 !!! warning "Вход — RGB"
     Ultralytics переводит BGR в RGB перед сетью, значит, сеть обучена на RGB. Лист библиотеки уже RGB
@@ -246,8 +214,7 @@ sequenceDiagram
 
 ### Плитки и зоны
 
-Лист режется сеткой `tiles.grid` — той же, что при обучении (`training/make_dataset.py`, повторяет
-`sahi.slicing.get_slice_bboxes`): плитка равна входу сети (640), перекрытие 0.2, последняя плитка в ряду прижата к
+Лист режется сеткой `tiles.grid` — той же, что при обучении (`training/make_dataset.grid`): плитка равна входу сети (640), перекрытие 0.2, последняя плитка в ряду прижата к
 краю. Плитка меньше входа дополняется серым справа и снизу — координаты плитки не меняются.
 
 Дубли между плитками убирает правило зон, а не NMS. Граница зон двух соседних плиток — середина их перекрытия:
@@ -278,9 +245,8 @@ x, px     0                            576           856           1200
 
 ### Маска
 
-Маска объекта — как `ultralytics.utils.ops.process_mask_native`: коэффициенты × прототипы, билинейное увеличение до
-входа, обрезка по боксу в полном разрешении, логит $> 0$. Вариант `process_mask` (обрезка в масштабе прототипов,
-потом увеличение) даёт маску шире стрелки — для удаления нужна точная.
+Маска объекта: коэффициенты × прототипы, билинейное увеличение до входа, обрезка по боксу в полном разрешении,
+логит $> 0$. Обрезка в масштабе прототипов до увеличения даёт маску шире стрелки — для удаления нужна точная.
 
 ## clear_text: текст с маски краски
 
