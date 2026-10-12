@@ -10,9 +10,9 @@ from typing import Annotated
 import typer
 
 from draftslice.core.denoise.arrows import ArrowModel
-from draftslice.core.denoise.pipeline import run
 from draftslice.core.io import load_image, save_image
 from draftslice.core.ocr.engine import OCREngine, PaddleOCRParameters
+from draftslice.pipeline import run
 
 app = typer.Typer(help="Чистка чертежей: чистый лист без шума и виды для ViT.", no_args_is_help=True)
 
