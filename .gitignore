@@ -13,6 +13,7 @@ wheels/
 .cache/
 data/
 runs/
-
+*/*/decisions/
+*/canon/
 *.pt
 *.npz

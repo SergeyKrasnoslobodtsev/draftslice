@@ -1,21 +1,149 @@
-# Модуль: thick_lines
+# core.thick_lines
 
-Из маски краски чертежа строит граф линий и делит линии на толстые (контур детали) и тонкие (размерные,
-выносные, штриховка, рамки с номерами). Нужен, чтобы оставить контур и не повредить его.
+Из маски краски чертежа строит граф линий и делит линии на толстые (контур детали) и тонкие (размерные, выносные,
+штриховка, рамки с номерами). Нужен, чтобы оставить контур и не повредить его.
+
+## Использование
+
+```python
+from draftslice.core.thick_lines import pipeline as thick_lines
+
+lines = thick_lines.run(ink, t_c)  # ink: маска краски 0/255 без текста; t_c: толщина контура в масштабе ink, px
+lines.g, lines.dist                # граф линий (skan.Skeleton) и расстояние до фона
+lines.cls.thick                    # (P,) bool: путь графа толстый
+lines.plot()                       # RGB: толстые красным, тонкие голубым
+```
+
+## Интерфейс
+
+```mermaid
+classDiagram
+    direction LR
+    class pipeline {
+        <<module>>
+        +run(ink, t_c, max_kink_deg, tol, thick_ratio) Lines
+    }
+    class Lines {
+        <<frozen dataclass>>
+        +ndarray ink
+        +ndarray dist
+        +Skeleton g
+        +LineClasses cls
+        +plot(width) ndarray
+    }
+    class graph {
+        <<module>>
+        +build_graph(mask, dist, ...) Skeleton
+    }
+    class classify {
+        <<module>>
+        +classify_lines(g, dist, t_c, ...) LineClasses
+    }
+    class LineClasses {
+        <<frozen dataclass>>
+        +ndarray thick
+        +ndarray level
+        +ndarray length
+        +float thr
+    }
+    class geometry {
+        <<module>>
+        +fit_circle(p) Circle
+        +are_coaxial(...) bool
+    }
+    class thickness {
+        <<module>>
+        +skeleton_thickness(g, dist) ndarray
+        +junction_free(t, deg)
+    }
+    pipeline ..> graph
+    pipeline ..> classify
+    pipeline --> Lines : создаёт
+    Lines *-- LineClasses
+    classify --> LineClasses : создаёт
+    graph ..> geometry
+    graph ..> thickness
+    classify ..> thickness
+```
+
+| Объект | Файл | Описание |
+|---|---|---|
+| `run(ink, t_c, ...)` | `pipeline.py` | Точка входа: `dist`, граф и классы путей |
+| `Lines` | `pipeline.py` | Краска, `dist`, граф, классы; `plot()` рисует классы на краске |
+| `build_graph(mask, dist, ...)` | `graph.py` | Скелет, склейка веток по соосности, разрез по толщине → `Skeleton` |
+| `classify_lines(g, dist, t_c, ...)` | `classify.py` | Рамка, горки уровней, порог → `LineClasses` |
+| `skeleton_thickness(g, dist)` | `thickness.py` | Толщина $2 \cdot dist$ в каждом пикселе скелета |
+| `geometry.*` | `geometry.py` | Окружности и направления веток для склейки; вызывает только `graph.py` |
+
+`LineClasses` — `frozen dataclass`, по одной записи на путь графа (`P` — число путей):
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `thick` | `bool (P,)` | Путь толстый: уровень выше порога или `bridge`. Если порога нет, все толстые |
+| `level` | `float32 (P,)` | Уровень толщины, px |
+| `length` | `float32 (P,)` | Длина, px: вес в распределении |
+| `frame` | `bool (P,)` | Рамка листа; в распределение не входит |
+| `bridge` | `bool (P,)` | Разрыв толстой линии, толстый по соседям |
+| `thr` | `float \| None` | Порог уровня, px; `None` — под контурной горкой других значимых горок нет |
+| `peaks`, `weak` | `float64` | Уровни значимых и незначимых максимумов плотности |
+| `valleys`, `masses` | `float64` | Минимумы между горками и доли длины в горках |
+| `contour` | `int \| None` | Индекс контурной горки в `peaks` |
+| `grid`, `dens` | `float64` | Сетка уровней и плотность на ней — для графика |
+
+## Аргументы
+
+`run` передаёт часть аргументов в `build_graph` и `classify_lines`:
+
+| Аргумент | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `ink` | `np.ndarray[uint8]` | — | Маска краски `0/255` `(H, W)` без текста |
+| `t_c` | `float` | — | Толщина контура в масштабе `ink`, px |
+| `max_kink_deg` | `float` | `30.0` | Наибольший излом при склейке соосных путей и в `bridge`, градусы |
+| `tol` | `float` | `0.1` | Допуск совпадения окружностей двух дуг при склейке, доля радиуса |
+| `thick_ratio` | `float` | `1.3` | Единственный порог по толщине: куски, различающиеся больше чем в `thick_ratio` раз, режутся |
+
+Остальные пороги `classify_lines` — именованные, `run` их не пробрасывает:
+
+| Аргумент | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `frame_span` | `float` | `0.9` | Доля листа по высоте или ширине, с которой линия — рамка |
+| `prominence` | `float` | `0.05` | Доля максимума плотности, ниже которой выступ — не горка |
+| `bandwidth` | `float` | `0.05` | Ширина гауссова ядра в логарифме уровня |
 
 ## Пайплайн
 
 ```mermaid
-flowchart TD
-    A["ink: маска краски 0/255<br/>dist: расстояние до фона"] --> B["thinning<br/>скелет Zhang-Suen"]
-    B --> C["_prune_spurs<br/>снять шпоры"]
-    C --> D["дубли рёбер и близкие узлы<br/>стянуть в один узел"]
-    D --> E["_link_ends<br/>пары концов в узле по соосности"]
-    E --> F["_build_chains<br/>цепочки веток"]
-    F --> G["_branch_cuts, _level_cuts<br/>разрез цепочки по толщине"]
-    G --> H["Skeleton: итоговый граф"]
-    H --> I["classify_lines<br/>рамка вне, горки уровней, долина под контурной"]
-    I --> J["LineClasses.thick<br/>толстый / тонкий"]
+sequenceDiagram
+    autonumber
+    actor C as Вызывающий код
+    participant R as pipeline.run
+    participant G as graph.build_graph
+    participant K as skan.Skeleton
+    participant L as classify_lines
+
+    C->>+R: run(ink, t_c)
+    R->>R: dist = distanceTransform(ink)
+    R->>+G: build_graph(ink, dist, max_kink_deg, tol, thick_ratio)
+    G->>G: thinning (Zhang–Suen), _prune_spurs: снять шпоры
+    G->>+K: Skeleton(skel)
+    K-->>-G: ветки скелета
+    G->>G: _without_duplicates, _merge_close_nodes
+    G->>G: _link_ends: пары концов в узле по соосности
+    G->>G: _build_chains: цепочки веток
+    loop цепочка
+        G->>G: junction_free: профиль t без пятен стыков
+        G->>G: _branch_cuts, _level_cuts: разрез по thick_ratio
+    end
+    G->>+K: replace_paths(куски)
+    K-->>-G: итоговый граф
+    G-->>-R: Skeleton
+    R->>+L: classify_lines(g, dist, t_c, max_kink_deg)
+    L->>L: _levels, _frame: уровни и длины линий, рамка
+    L->>L: _density, find_peaks: горки уровней
+    L->>L: порог = минимум плотности под контурной горкой
+    L->>L: _bridges: разрывы толстой линии
+    L-->>-R: LineClasses
+    R-->>-C: Lines(ink, dist, g, cls)
 ```
 
 | Шаг | Функция | Вход | Выход |
@@ -28,10 +156,12 @@ flowchart TD
 
 ## Условности
 
+Числа в примерах ниже — для толщины контура 6 px.
+
 - Координаты — `(row, col)`. Путь графа — последовательность пикселей скелета от одного конца к другому.
 - **Толщина** $t = 2 \cdot dist$ — диаметр вписанного круга в точке скелета. Она квантована: $dist$ у
   cv2 на линиях вдоль сетки целый, поэтому на исходном масштабе $t$ идёт шагом 2 px (на листах 1, 10 и 19
-  уровни линий 2 и 4). Лист увеличивают до бинаризации, см. [масштаб](../decisions/thick_lines.md).
+  уровни линий 2 и 4). Лист приводят к рабочему масштабу до бинаризации (`preprocess`).
 - **Уровень линии** — среднее геометрическое её толщины без пятен стыков:
 
     $$level = \exp\left(\overline{\ln t}\right)$$
@@ -168,8 +298,8 @@ flowchart LR
 5. **Порог** — минимум плотности между контурной горкой и ближайшей значимой горкой под ней. Линия толстая,
    если её уровень выше порога.
 6. **Масса горки** — доля длины линий (без рамки) между соседними долинами.
-7. Под контурной горкой значимых горок нет — порога нет (`thr = None`), все линии толстые. Так сделано по
-   OQ-04 канона: потеря геометрии хуже оставшегося шума.
+7. Под контурной горкой значимых горок нет — порога нет (`thr = None`), все линии толстые: потеря контура хуже
+   оставшегося шума.
 8. **Разрывы толстой линии (`bridge`).** Короткий путь — короче трёх толщин соседних толстых, как минимальная
    часть разреза по толщине в шаге 4, — своей надёжной толщины не имеет: между узлами штриховки скелет меряет
    стык, и кусок контура получает уровень тонкой. Он толстый, если с обоих концов к нему примыкают толстые пути

@@ -1,74 +1,164 @@
-# Модуль: ocr
+# core.ocr
 
-Распознаёт текст на растровом чертеже (размерные надписи, позиции, технические требования) через
-PaddleOCR.
+Распознаёт текст на растровом чертеже (размерные надписи, позиции, технические требования) через PaddleOCR и
+возвращает строки с полигонами в координатах исходного листа.
+
+## Использование
+
+```python
+from draftslice.core.ocr.engine import OCREngine, PaddleOCRParameters
+from draftslice.core.ocr.pipeline import run
+
+engine = OCREngine(PaddleOCRParameters())  # модели грузятся один раз на пачку листов
+results = run(img, engine)                 # list[OcrResult]
+for r in results:
+    r.text, r.confidence, r.poly           # строка, уверенность, полигон (4, 2) float32
+```
+
+## Интерфейс
+
+```mermaid
+classDiagram
+    direction LR
+    class PaddleOCRParameters {
+        <<dataclass>>
+        +float text_rec_score_thresh
+        +str text_detection_model_dir
+        +str text_recognition_model_dir
+        +tuple angles
+    }
+    class OCREngine {
+        +recognize(image) list~OcrResult~
+    }
+    class OcrResult {
+        <<dataclass>>
+        +str text
+        +float confidence
+        +ndarray poly
+    }
+    class pipeline {
+        <<module>>
+        +run(image, engine, iou_threshold) list~OcrResult~
+    }
+    class result_filtering {
+        <<module>>
+        +filter_results(results, iou_threshold) list~OcrResult~
+    }
+    OCREngine o-- PaddleOCRParameters
+    OCREngine ..> OcrResult
+    pipeline ..> OCREngine
+    pipeline ..> result_filtering
+```
+
+| Объект | Файл | Описание |
+|---|---|---|
+| `run(image, engine, iou_threshold)` | `pipeline.py` | Распознавание и фильтрация: единственная точка входа |
+| `OCREngine.recognize(image)` | `engine.py` | Прогон детекции и распознавания на каждом угле поворота; сырой список |
+| `filter_results(results, iou_threshold)` | `result_filtering.py` | Убирает нетекстовый мусор и дубли между поворотами |
+| `OcrResult` | `engine.py` | Строка, уверенность и полигон в координатах исходного листа |
+
+## Аргументы
+
+`PaddleOCRParameters`:
+
+| Аргумент | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `text_rec_score_thresh` | `float` | `0.3` | Порог уверенности распознавания |
+| `text_detection_model_dir` | `str` | `../models/PP-OCRv6_medium_det_infer` | Папка модели детекции |
+| `text_recognition_model_dir` | `str` | `../models/cyrillic_PP-OCRv5_mobile_rec_infer` | Папка модели распознавания |
+| `text_detection_model_name` | `str` | `PP-OCRv6_medium_det` | Имя модели детекции |
+| `text_recognition_model_name` | `str` | `cyrillic_PP-OCRv5_mobile_rec` | Имя модели распознавания |
+| `angles` | `tuple[float, ...]` | `(0, 90, 270)` | Углы поворота листа, градусы, на которых ищется текст |
+
+`run`:
+
+| Аргумент | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `image` | `np.ndarray` | — | Лист RGB `(H, W, 3)` |
+| `engine` | `OCREngine` | — | Заранее созданный движок |
+| `iou_threshold` | `float` | `0.3` | Порог IoU, выше которого результаты разных поворотов — одна надпись |
 
 ## Пайплайн
 
 ```mermaid
-flowchart TD
-    A["image: np.ndarray (RGB)"] --> B["OCREngine.recognize"]
-    B -->|"list[OcrResult], сырые, с дублями и мусором"| C["filter_results"]
-    C -->|"list[OcrResult]"| D["..."]
+sequenceDiagram
+    autonumber
+    actor C as Вызывающий код
+    participant R as pipeline.run
+    participant E as OCREngine
+    participant O as utils.ops
+    participant PO as PaddleOCR
+    participant F as filter_results
+
+    C->>+R: run(image, engine, iou_threshold)
+    R->>+E: recognize(image)
+    loop angle из params.angles
+        E->>+O: rotate_image(image, angle)
+        O-->>-E: rotated, mat
+        E->>+PO: predict(rotated)
+        PO-->>-E: rec_polys, rec_texts, rec_scores
+        E->>E: _polys_to_original(polys, mat) через M⁻¹
+    end
+    E-->>-R: list[OcrResult], сырые: дубли и мусор
+    R->>+F: filter_results(raw, iou_threshold)
+    F->>F: отбросить результаты без букв и цифр
+    F->>F: NMS по IoU осевых прямоугольников
+    F-->>-R: list[OcrResult]
+    R-->>-C: list[OcrResult]
 ```
 
-| Шаг | Функция | Вход | Выход |
-|---|---|---|---|
-| 1. Распознавание по поворотам | `OCREngine.recognize` | `np.ndarray` (RGB) | `list[OcrResult]` (сырые) |
-| 2. Фильтрация и слияние дублей | `filter_results` | `list[OcrResult]` | `list[OcrResult]` |
+`OCREngine` держит загруженные модели, поэтому создаётся вызывающим кодом один раз и передаётся в `run`, а не
+создаётся внутри на каждый лист.
 
-`run()` композирует оба шага и возвращает финальный список - без промежуточных сырых результатов.
+## Шаг 1. Распознавание на нескольких поворотах
 
-## Шаг 1. Распознавание на нескольких поворотах листа
-
-Детектор PaddleOCR надёжно находит только текст, близкий к горизонтальному, а на чертеже
-размерные надписи часто идут вертикально вдоль размерных линий.
-
-!!! warning "Встроенный `use_textline_orientation` не решает эту задачу"
-    В PaddleOCR/PaddleX есть отдельный классификатор ориентации текстовой строки
-    (`use_textline_orientation`), но по исходникам paddlex он умеет корректировать только
-    0°/180° (`rotate_angle_list` принимает исключительно `0` или `1`, что соответствует `0°`
-    или `180°`). Для вертикального (90°/270°) текста он бесполезен - см.
-    [решения](../decisions/ocr.md#почему-не-usetextlineorientation).
-
-Вместо этого `OCREngine.recognize` прогоняет полный цикл детекция+распознавание на каждом угле
-из `PaddleOCRParameters.angles` (по умолчанию `(0, 90, 270)`) - для каждого поворота лист
-поворачивается целиком (`core/utils/ops.rotate_image`, холст расширяется под новый
-размер), запускается `PaddleOCR.predict`, а найденные `rec_polys` переводятся обратной матрицей
-поворота (`cv2.invertAffineTransform`) обратно в систему координат исходного `image` - другие
-модули всегда получают `OcrResult.poly` в одной и той же (исходной) системе координат, независимо
-от того, на каком повороте текст был найден.
+Детектор PaddleOCR надёжно находит только текст, близкий к горизонтальному, а размерные надписи на чертеже часто идут
+вертикально вдоль размерных линий. `OCREngine.recognize` прогоняет полный цикл детекция + распознавание на каждом
+угле из `angles`: лист поворачивается целиком (`utils.ops.rotate_image`, холст расширяется под новый размер), а
+найденные `rec_polys` переводятся обратной матрицей поворота (`cv2.invertAffineTransform`) в систему координат
+исходного листа. Другие модули всегда получают `OcrResult.poly` в одной системе координат, независимо от того, на
+каком повороте найден текст.
 
 $$
 \text{poly}_{\text{original}} = M^{-1} \cdot \text{poly}_{\text{rotated}}
 $$
 
-где $M$ - аффинная матрица поворота, построенная для конкретного угла и размера холста.
+$M$ — аффинная матрица поворота для угла и размера холста.
+
+```text
+угол 0°: найдено только горизонтальное        угол 90°: вертикальная надпись стала горизонтальной
+
+┌──────────────────────────┐                  ┌───────────┐
+│  [ 40 ]                  │                  │  [ 25 ]   │   polys → M⁻¹ → в координаты
+│                      2   │                  │           │   исходного листа
+│                      5   │                  └───────────┘
+└──────────────────────────┘
+```
+
+!!! warning "Встроенный `use_textline_orientation` не решает задачу"
+    Классификатор ориентации строки в PaddleOCR/PaddleX корректирует только 0° и 180° (`rotate_angle_list` принимает
+    `0` или `1`). Для вертикального текста (90°/270°) он бесполезен.
 
 ## Шаг 2. Фильтрация и слияние дублей
 
-Один и тот же текст может быть распознан в нескольких поворотах одновременно (например, если
-строка не строго горизонтальна ни в одном из углов, но распознаётся приемлемо в двух). `filter_results`:
+Один и тот же текст может быть найден на нескольких поворотах. `filter_results`:
 
-1. Отбрасывает результаты, где нет ни одной буквы/цифры (`str.isalnum()`, юникод-корректно
-   работает и с кириллицей) - шум детектора на графических элементах чертежа.
-2. Убирает дубли между поворотами через NMS (non-max suppression) по IoU осевых прямоугольников
-   полигонов: сортирует по `confidence`, жадно оставляет запись, если она не перекрывается больше
-   `iou_threshold` с уже оставленной более уверенной.
+1. Отбрасывает результаты без единой буквы или цифры (`str.isalnum()`, корректно для кириллицы) — шум детектора на
+   графике чертежа.
+2. Убирает дубли между поворотами через NMS по IoU осевых прямоугольников полигонов: результаты сортируются по
+   `confidence`, запись остаётся, если она не перекрывается больше `iou_threshold` с уже оставленной, более
+   уверенной.
 
 $$
 \text{IoU}(a, b) = \frac{\text{area}(a \cap b)}{\text{area}(a \cup b)}
 $$
 
-!!! note "IoU считается по осевому прямоугольнику полигона, не по самому четырёхугольнику"
-    Упрощение сознательное - для различения "та же надпись" от "соседняя другая надпись" этого
-    достаточно, точное пересечение произвольных четырёхугольников выигрыша не даёт. См.
-    [известную проблему](../decisions/ocr.md#iou-по-осевому-прямоугольнику) для пограничного
-    случая, где это может быть неточным.
+!!! note "IoU по осевому прямоугольнику"
+    Перекрытие считается по осевому прямоугольнику полигона, а не по самому четырёхугольнику: различить «та же
+    надпись» и «соседняя надпись» этого достаточно. У полигона, повёрнутого далеко от осей, прямоугольник
+    заметно больше самого полигона; на чертежах текст идёт под 0°, 90°, 180° и 270°, где они совпадают.
 
 ## Граница с другими модулями
 
-`OcrResult` не содержит и не должен содержать ничего о линиях/штрихах чертежа - только
-`text`/`confidence`/`poly`. Решение, что считать текстом при работе с линиями (например,
-`text_share` цепи скелетона), принимает модуль классификации линий, беря `OcrResult.poly` как
-вход - `ocr` о существовании линий ничего не знает.
+`OcrResult` содержит только `text`, `confidence` и `poly` и ничего не знает о линиях чертежа. Потребители полигонов
+(`denoise.text.clear_text`, правила `Sheet`) берут `OcrResult.poly` как вход.
