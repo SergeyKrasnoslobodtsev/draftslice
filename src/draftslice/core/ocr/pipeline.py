@@ -15,6 +15,7 @@ import numpy as np
 
 from draftslice.core.ocr.engine import OCREngine, OcrResult
 from draftslice.core.ocr.result_filtering import filter_results
+from draftslice.core.utils.checks import check_image
 
 
 def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> list[OcrResult]:
@@ -22,8 +23,8 @@ def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> lis
 
     Parameters
     ----------
-    image : np.ndarray
-        Изображение чертежа (RGB).
+    image : np.ndarray[uint8]
+        Изображение чертежа RGB `(H, W, 3)`.
     engine : OCREngine
         Заранее созданный движок распознавания.
     iou_threshold : float
@@ -34,6 +35,12 @@ def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> lis
     -------
     list[OcrResult]
         Распознанный текст без мусора и дублей, координаты полигонов - в системе `image`.
+
+    Raises
+    ------
+    TypeError
+        `image` не `(H, W, 3)` uint8.
     """
+    check_image(image, channels=3, dtype=np.uint8)
     raw_results = engine.recognize(image)
     return filter_results(raw_results, iou_threshold=iou_threshold)
