@@ -13,9 +13,9 @@ from embeddings import DinoEmbedder, embed_views
 from tqdm import tqdm
 
 from draftslice.core.denoise.arrows import ArrowModel
-from draftslice.core.denoise.pipeline import run
 from draftslice.core.io import load_image
 from draftslice.core.ocr.engine import OCREngine
+from draftslice.pipeline import run
 
 
 @dataclass(frozen=True)
@@ -61,9 +61,9 @@ def build_dataset(
     source_files : list[Path]
         Пути к файлам эскизов.
     arrow_model : ArrowModel
-        Модель стрелок для `draftslice.core.denoise.pipeline.run`.
+        Модель стрелок для `draftslice.pipeline.run`.
     ocr_engine : OCREngine
-        Движок OCR для `draftslice.core.denoise.pipeline.run`.
+        Движок OCR для `draftslice.pipeline.run`.
     embedder : DinoEmbedder
         Загруженная модель эмбеддингов.
     target_size : int
