@@ -68,12 +68,12 @@ def build_graph(
     pieces = []
     for chain, _ in _build_chains(g.n_paths, links):
         pix = _chain_pix(g, chain)
-        t, spots = thick.junction_free(t_px[pix], g.degrees[pix])
+        prof = thick.junction_free(t_px[pix], g.degrees[pix])
         ends = np.cumsum([ip[p + 1] - ip[p] - 1 for p, _ in chain])  # последняя точка каждой ветки в pix
-        nodes = [0, *_branch_cuts(t, spots, ends, thick_ratio), len(pix) - 1]
+        nodes = [0, *_branch_cuts(prof.t, prof.spots, ends, thick_ratio), len(pix) - 1]
         bounds = [0]
         for a, b in zip(nodes[:-1], nodes[1:], strict=True):
-            bounds += [a + c for c in _level_cuts(t[a : b + 1], thick_ratio)] + [b]
+            bounds += [a + c for c in _level_cuts(prof.t[a : b + 1], thick_ratio)] + [b]
         pieces += [pix[a : b + 1] for a, b in zip(bounds[:-1], bounds[1:], strict=True)]
     return replace_paths(g, pieces)
 
