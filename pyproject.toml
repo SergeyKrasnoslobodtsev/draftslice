@@ -1,27 +1,73 @@
 [project]
 name = "draftslice"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10"
-
+requires-python = ">=3.11"
 
 dependencies = [
     "numpy>=2.2.6",
-    "onnxruntime>=1.24.3",
-    "opencv-python-headless>=4.13.0.92",
+    "onnxruntime-gpu>=1.22 ; sys_platform == 'linux'",
+    "scikit-image>=0.25.2",
+    "skan>=0.13.1",
+    "scikit-learn>=1.7.2",
+    "paddleocr>=3.7.0",
+    "paddlepaddle-gpu>=3.3.1 ; sys_platform == 'linux'",
+    "paddlepaddle>=3.3.1 ; sys_platform == 'win32' or sys_platform == 'darwin'",
+    "typer>=0.27.3",
+    "transformers>=5.19.0",
 ]
 
-[project.optional-dependencies]
+[project.scripts]
+draftslice = "draftslice.cli:app"
+
+
+[dependency-groups]
 dev = [
-    "pytest>=9.0.3",
-    "pytest-cov>=7.1.0",
-    "ruff>=0.15.15",
+    "ipykernel",
+    "pytest>=7.2",
+    "pytest-asyncio>=0.20.3",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.15.8",
+    "matplotlib>=3.9.4",
+    "ipywidgets>=8.1.8",
+    "pandas>=2.0",
+    "tqdm>=4.68.3",
+]
+# обучение YOLO-seg на Linux (training/); пакет draftslice их не импортирует
+training = [
+    "ultralytics>=8.4.0",
+    "albumentations>=2.0.8",
+    "onnx>=1.17",
+    "onnxslim>=0.1.71",
 ]
 
-plot =[
-    "matplotlib>=3.10.9",
+[tool.uv]
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
 ]
+# paddlex закрепляет opencv-contrib-python==4.10.0.84, а проекту нужен 4.13 (cv2.IMREAD_COLOR_RGB)
+# и contrib (cv2.ximgproc.thinning). Одна сборка cv2 на окружение - две сборки перетирают модуль.
+override-dependencies = ["opencv-contrib-python>=4.13.0.92,<5"]
+# sahi/ultralytics тянут opencv-python, albumentations - opencv-python-headless: это тот же cv2 без contrib,
+# при установке он затирает ximgproc. Выкидываем их, cv2 даёт только opencv-contrib-python.
+exclude-dependencies = ["opencv-python", "opencv-python-headless"]
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddlepaddle-gpu" }
+paddlepaddle = { index = "paddlepaddle-cpu" }
+
+[[tool.uv.index]]
+name = "paddlepaddle-gpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
+explicit = true
+
+[[tool.uv.index]]
+name = "paddlepaddle-cpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+explicit = true
 
 [tool.ruff]
 exclude = [
@@ -73,7 +119,9 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 
 [tool.pytest.ini_options]
 disable_test_id_escaping_and_forfeit_all_rights_to_community_support = true
+# модули стенда лежат рядом с блокнотами, скрипты обучения - в training; тесты на них живут в test
+pythonpath = ["notebooks", "training"]
