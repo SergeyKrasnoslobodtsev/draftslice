@@ -7,11 +7,11 @@ from paddleocr import PaddleOCR
 from draftslice.core.utils.ops import rotate_image
 
 
-@dataclass
+@dataclass(frozen=True)
 class PaddleOCRParameters:
     """Параметры для настройки PaddleOCR.
 
-    Attributes:
+    Attributes
     ----------
     text_rec_score_thresh : float
         Порог достоверности для распознавания текста.
@@ -38,7 +38,7 @@ class PaddleOCRParameters:
     angles: tuple[float, ...] = (0, 90, 270)
 
 
-@dataclass
+@dataclass(frozen=True, eq=False)
 class OcrResult:
     """Один результат распознавания текста.
 
@@ -49,7 +49,7 @@ class OcrResult:
     confidence : float
         Достоверность распознавания.
     poly : np.ndarray[float32]
-        Четырёхугольник текстовой строки (4 точки, строка/столбец) в системе координат
+        `(4, 2)` четырёхугольник текстовой строки, точки `(x, y)` в системе координат
         исходного изображения, переданного в `OCREngine.recognize`.
     """
 
@@ -108,9 +108,9 @@ class OCREngine:
         """
         results: list[OcrResult] = []
         for angle in self._params.angles:
-            rotated, mat = rotate_image(image, angle)
-            res = self._ocr.predict(rotated)[0]
-            polys = _polys_to_original(res["rec_polys"], mat)
+            rot = rotate_image(image, angle)
+            res = self._ocr.predict(rot.img)[0]
+            polys = _polys_to_original(res["rec_polys"], rot.mat)
             for text, confidence, poly in zip(res["rec_texts"], res["rec_scores"], polys, strict=True):
                 results.append(OcrResult(text=text, confidence=confidence, poly=poly))
         return results
