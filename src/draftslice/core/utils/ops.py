@@ -1,14 +1,50 @@
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
 
-def rotate_image(image: np.ndarray, angle: float) -> tuple[np.ndarray, np.ndarray]:
-    """Поворачивает изображение на заданный угол в градусах."""
+@dataclass(frozen=True, eq=False)
+class Rotated:
+    """Повёрнутое изображение.
+
+    Attributes
+    ----------
+    img : np.ndarray
+        Повёрнутое изображение; холст расширен, чтобы лист влез целиком.
+    mat : np.ndarray[float64]
+        `(2, 3)` аффинная матрица из исходных координат `(x, y)` в повёрнутые.
+    """
+
+    img: np.ndarray
+    mat: np.ndarray
+
+
+def rotate_image(image: np.ndarray, angle: float) -> Rotated:
+    """Поворачивает изображение на угол в градусах против часовой стрелки с расширением холста.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Изображение `(H, W)` или `(H, W, C)`.
+    angle : float
+        Угол поворота, градусы, `[0, 360)`.
+
+    Returns
+    -------
+    Rotated
+        Повёрнутое изображение и матрица перехода; при угле 0 - то же изображение и единичная матрица.
+
+    Raises
+    ------
+    ValueError
+        `angle` вне `[0, 360)`.
+    """
     if angle < 0 or angle >= 360:
         raise ValueError("Параметр `angle` должен быть в диапазоне [0, 360).")
 
     if angle < 1e-7:
-        return image, np.eye(2, 3, dtype=np.float32)
+        return Rotated(image, np.eye(2, 3))
 
     h, w = image.shape[:2]
     center = (w / 2, h / 2)
@@ -23,7 +59,7 @@ def rotate_image(image: np.ndarray, angle: float) -> tuple[np.ndarray, np.ndarra
     dst_size = (new_w, new_h)
 
     rotated = cv2.warpAffine(image, mat, dst_size, flags=cv2.INTER_CUBIC)
-    return rotated, mat
+    return Rotated(rotated, mat)
 
 
 def scale_mask(
