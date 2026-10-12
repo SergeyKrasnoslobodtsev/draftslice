@@ -29,6 +29,7 @@ from draftslice.core.ocr import pipeline as ocr
 from draftslice.core.ocr.engine import OCREngine
 from draftslice.core.thick_lines import pipeline as thick_lines
 from draftslice.core.thick_lines.pipeline import Lines
+from draftslice.core.utils.checks import check_image
 from draftslice.core.utils.ops import scale_mask
 
 
@@ -161,7 +162,13 @@ def run(
     -------
     DenoiseResult
         Чистый лист, виды и промежуточные результаты.
+
+    Raises
+    ------
+    TypeError
+        `img` не `(H, W, 3)` uint8.
     """
+    check_image(img, channels=3, dtype=np.uint8)
     texts = ocr.run(img, engine=ocr_engine)
     prep = pp.preprocess(img, target=target, max_scale=max_scale)
     polys = [r.poly * prep.scale for r in texts]
