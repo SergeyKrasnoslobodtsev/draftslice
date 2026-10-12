@@ -9,9 +9,7 @@ from collections.abc import Callable
 from enum import Enum
 
 import numpy as np
-
 from dataset import EmbeddingDataset
-from draftslice.common_types import Floats
 
 
 class MatchStrategy(Enum):
@@ -32,29 +30,29 @@ class MatchStrategy(Enum):
     MEAN_PAIR = "mean_pair"
 
 
-def normalize_rows(embeddings: Floats) -> Floats:
+def normalize_rows(embeddings: np.ndarray) -> np.ndarray:
     """Нормировать строки на единичную длину для косинусного сходства.
 
     Parameters
     ----------
-    embeddings : Floats
+    embeddings : np.ndarray
         Эмбеддинги, по строке на вектор.
 
     Returns
     -------
-    Floats
+    np.ndarray
         Эмбеддинги той же формы, каждая строка единичной длины.
     """
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     return embeddings / np.maximum(norms, 1e-12)
 
 
-def score_best_pair(query: Floats, candidate: Floats) -> float:
+def score_best_pair(query: np.ndarray, candidate: np.ndarray) -> float:
     """Сходство как максимум по всем парам вид-вид.
 
     Parameters
     ----------
-    query, candidate : Floats
+    query, candidate : np.ndarray
         Эмбеддинги видов запроса и кандидата.
 
     Returns
@@ -66,12 +64,12 @@ def score_best_pair(query: Floats, candidate: Floats) -> float:
     return float(similarity.max())
 
 
-def score_mean_embedding(query: Floats, candidate: Floats) -> float:
+def score_mean_embedding(query: np.ndarray, candidate: np.ndarray) -> float:
     """Сходство между усредненными по видам эмбеддингами.
 
     Parameters
     ----------
-    query, candidate : Floats
+    query, candidate : np.ndarray
         Эмбеддинги видов запроса и кандидата.
 
     Returns
@@ -84,12 +82,12 @@ def score_mean_embedding(query: Floats, candidate: Floats) -> float:
     return float((query_mean @ candidate_mean.T).item())
 
 
-def score_mean_pair(query: Floats, candidate: Floats) -> float:
+def score_mean_pair(query: np.ndarray, candidate: np.ndarray) -> float:
     """Сходство как среднее по всем парам вид-вид.
 
     Parameters
     ----------
-    query, candidate : Floats
+    query, candidate : np.ndarray
         Эмбеддинги видов запроса и кандидата.
 
     Returns
@@ -101,7 +99,7 @@ def score_mean_pair(query: Floats, candidate: Floats) -> float:
     return float(similarity.mean())
 
 
-_SCORERS: dict[MatchStrategy, Callable[[Floats, Floats], float]] = {
+_SCORERS: dict[MatchStrategy, Callable[[np.ndarray, np.ndarray], float]] = {
     MatchStrategy.BEST_PAIR: score_best_pair,
     MatchStrategy.MEAN_EMBEDDING: score_mean_embedding,
     MatchStrategy.MEAN_PAIR: score_mean_pair,
@@ -109,13 +107,13 @@ _SCORERS: dict[MatchStrategy, Callable[[Floats, Floats], float]] = {
 
 
 def find_similar_sketches(
-    query: Floats, dataset: EmbeddingDataset, strategy: MatchStrategy, top_k: int = 5
+    query: np.ndarray, dataset: EmbeddingDataset, strategy: MatchStrategy, top_k: int = 5
 ) -> list[tuple[str, float]]:
     """Найти самые похожие на запрос эскизы в датасете.
 
     Parameters
     ----------
-    query : Floats
+    query : np.ndarray
         Эмбеддинги видов запроса.
     dataset : EmbeddingDataset
         Эмбеддинги эскизов, среди которых ищем.

@@ -15,6 +15,7 @@ dependencies = [
     "paddlepaddle-gpu>=3.3.1 ; sys_platform == 'linux'",
     "paddlepaddle>=3.3.1 ; sys_platform == 'win32' or sys_platform == 'darwin'",
     "typer>=0.27.3",
+    "transformers>=5.19.0",
 ]
 
 [project.scripts]
