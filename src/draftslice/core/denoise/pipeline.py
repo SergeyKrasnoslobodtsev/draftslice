@@ -1,15 +1,16 @@
 """Точка входа `denoise`: лист целиком - текст, масштаб, линии, стрелки, правила чистки, виды.
 
-Интерфейс как у Ultralytics: модели создаются один раз и передаются в `run`, результат - объект с `plot`/`save`.
 
-    arrow_model = ArrowModel("models/arrows.onnx")
-    ocr_engine = OCREngine(PaddleOCRParameters())
-    res = run(img, arrow_model, ocr_engine)
-    res.clean               # чистый лист RGB в исходном масштабе
-    res.views               # виды для ViT
-    res.plot()              # лист: чистое - чёрным, снятое - бледным, рамки видов
-    res.save("out/1.png")
-    res.save_views("out/views", "1", size=224)
+
+
+arrow_model = ArrowModel("models/arrows.onnx")
+ocr_engine = OCREngine(PaddleOCRParameters())
+res = run(img, arrow_model, ocr_engine)
+res.clean               # чистый лист RGB в исходном масштабе
+res.views               # виды для ViT
+res.plot()              # лист: чистое - чёрным, снятое - бледным, рамки видов
+res.save("out/1.png")
+res.save_views("out/views", "1", size=224)
 """
 
 from dataclasses import dataclass

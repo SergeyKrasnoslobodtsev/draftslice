@@ -1,7 +1,5 @@
 """Стрелки на листе: ONNX-модель YOLO-seg через onnxruntime, лист режется на плитки, как при обучении.
 
-Интерфейс как у Ultralytics: модель создаётся один раз, вызывается на листах.
-
     model = ArrowModel("models/arrows.onnx")
     res = model(img, conf=0.3)
     res.mask, res.xyxy, res.conf, len(res)
@@ -148,7 +146,7 @@ class ArrowModel:
 def _blob(tile, size):
     """Плитка RGB -> вход сети (1, 3, size, size) float32 в [0, 1]; дополнение серым справа и снизу.
 
-    Каналы не переставляются: лист уже RGB, как вход Ultralytics после его BGR -> RGB.
+    Каналы не переставляются: сеть обучена на RGB.
     """
     h, w = tile.shape[:2]
     tile = cv2.copyMakeBorder(tile, 0, size - h, 0, size - w, cv2.BORDER_CONSTANT, value=(PAD, PAD, PAD))
@@ -156,10 +154,10 @@ def _blob(tile, size):
 
 
 def _masks(coef, proto, boxes, size):
-    """Маски (n, size, size) как `ultralytics.utils.ops.process_mask_native` (`retina_masks`).
+    """Маски (n, size, size) в разрешении входа.
 
     Коэффициенты x прототипы, билинейное увеличение до входа, обрезка по боксу в полном разрешении, логит > 0.
-    Обрезка до увеличения (`process_mask`) даёт маску шире стрелки.
+    Обрезка до увеличения даёт маску шире стрелки.
     """
     c, ph, pw = proto.shape
     logits = (coef @ proto.reshape(c, -1)).reshape(-1, ph, pw)

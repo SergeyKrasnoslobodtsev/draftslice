@@ -1,7 +1,5 @@
 """Лист для чистки: общее для правил считается один раз, правила - методы, чистая краска - свойство.
 
-Интерфейс как у Ultralytics `Results`: объект хранит данные листа и лениво кеширует производные.
-
     sheet = Sheet(ink, g, dist, cls.thick, t_c, polys)
     sheet.trim(res.mask)
     sheet.remove(sheet.tables())

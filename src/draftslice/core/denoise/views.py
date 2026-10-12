@@ -1,7 +1,5 @@
 """Виды листа для ViT-моделей: группы сегментов чистой краски, вырезанные из исходного листа.
 
-Интерфейс как у Ultralytics `Results`: объект собирает виды один раз и отдаёт их в нужной форме.
-
     views = Views(sheet, orig, scale=preprocessed.scale)
     views[0].box, views[0].mask, views[0].img
     views.crops(size=224)
