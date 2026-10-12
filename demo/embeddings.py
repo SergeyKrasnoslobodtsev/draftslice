@@ -6,10 +6,9 @@
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from transformers import AutoImageProcessor, AutoModel
-
-from draftslice.common_types import Floats, Mat
 
 DEFAULT_MODEL_NAME = "facebook/dinov2-small"
 """Модель по умолчанию. DINOv3 на Hugging Face закрыта лицензией с ожиданием одобрения — DINOv2 та
@@ -19,14 +18,14 @@ DINOv3 после одобрения, достаточно передать др
 
 @dataclass(frozen=True)
 class DinoEmbedder:
-    """Загруженная модель DINOv3 вместе с её препроцессором.
+    """Загруженная модель DINO вместе с её препроцессором.
 
     Attributes
     ----------
     processor : AutoImageProcessor
         Препроцессор модели: ресайз и нормализация под конкретный чекпоинт.
     model : AutoModel
-        Загруженная модель DINOv3 в режиме инференса.
+        Загруженная модель DINO в режиме инференса.
     device : str
         Устройство, на котором считается инференс.
     """
@@ -37,7 +36,7 @@ class DinoEmbedder:
 
 
 def load_dino_embedder(model_name: str = DEFAULT_MODEL_NAME, device: str = "cpu") -> DinoEmbedder:
-    """Загрузить модель DINOv3 и её препроцессор.
+    """Загрузить модель DINO и её препроцессор.
 
     Parameters
     ----------
@@ -56,20 +55,20 @@ def load_dino_embedder(model_name: str = DEFAULT_MODEL_NAME, device: str = "cpu"
     return DinoEmbedder(processor=processor, model=model, device=device)
 
 
-def embed_views(embedder: DinoEmbedder, views: list[Mat]) -> Floats:
+def embed_views(embedder: DinoEmbedder, views: list[np.ndarray]) -> np.ndarray:
     """Посчитать эмбеддинг каждого вида одного эскиза.
 
     Parameters
     ----------
     embedder : DinoEmbedder
         Загруженная модель и препроцессор.
-    views : list[Mat]
-        Виды одного эскиза как RGB-картинки, из `draftslice.pipeline.extract_views`.
+    views : list[np.ndarray]
+        Виды одного эскиза: RGB `(size, size, 3)`, `uint8`, из `Views.crops`.
 
     Returns
     -------
-    Floats
-        Эмбеддинги, по строке на вид, в том же порядке, что и `views`.
+    np.ndarray
+        Эмбеддинги `(n_views, dim)`, по строке на вид, в том же порядке, что и `views`.
 
     Notes
     -----

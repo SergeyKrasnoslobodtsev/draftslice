@@ -12,11 +12,10 @@ import numpy as np
 from embeddings import DinoEmbedder, embed_views
 from tqdm import tqdm
 
-from draftslice.common_types import Floats
-from draftslice.image_preparation import load_bgr_image
-from draftslice.pipeline import extract_views
-from draftslice.pipeline_parameters import PipelineParameters
-from draftslice.text_detection import TextProbabilityDetector
+from draftslice.core.denoise.arrows import ArrowModel
+from draftslice.core.denoise.pipeline import run
+from draftslice.core.io import load_image
+from draftslice.core.ocr.engine import OCREngine
 
 
 @dataclass(frozen=True)
@@ -27,12 +26,12 @@ class SketchEmbeddings:
     ----------
     name : str
         Имя файла эскиза, с расширением, без каталога.
-    embeddings : Floats
-        Эмбеддинги видов, по строке на вид.
+    embeddings : np.ndarray
+        Эмбеддинги видов `(n_views, dim)`, по строке на вид.
     """
 
     name: str
-    embeddings: Floats
+    embeddings: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -50,10 +49,10 @@ class EmbeddingDataset:
 
 def build_dataset(
     source_files: list[Path],
-    detector: TextProbabilityDetector,
+    arrow_model: ArrowModel,
+    ocr_engine: OCREngine,
     embedder: DinoEmbedder,
     target_size: int,
-    parameters: PipelineParameters | None = None,
 ) -> EmbeddingDataset:
     """Построить датасет эмбеддингов по списку файлов эскизов.
 
@@ -61,26 +60,26 @@ def build_dataset(
     ----------
     source_files : list[Path]
         Пути к файлам эскизов.
-    detector : TextProbabilityDetector
-        Загруженная модель детекции текста.
+    arrow_model : ArrowModel
+        Модель стрелок для `draftslice.core.denoise.pipeline.run`.
+    ocr_engine : OCREngine
+        Движок OCR для `draftslice.core.denoise.pipeline.run`.
     embedder : DinoEmbedder
         Загруженная модель эмбеддингов.
     target_size : int
-        Сторона квадрата кропа вида под вход модели эмбеддинга.
-    parameters : PipelineParameters | None
-        Пороги пайплайна очистки, None означает значения по умолчанию.
+        Сторона квадрата вида под вход модели эмбеддинга.
 
     Returns
     -------
     EmbeddingDataset
-        Эмбеддинги видов каждого эскиза, в порядке `source_files`.
+        Эмбеддинги видов каждого эскиза в порядке `source_files`; эскиз, на котором не нашлось ни одного вида,
+        пропускается.
     """
     sketches = []
-    for source_path in tqdm(source_files, desc="эскизы"):
-        image = load_bgr_image(source_path)
-        views = extract_views(image, detector, target_size, parameters)
-        embeddings = embed_views(embedder, views)
-        sketches.append(SketchEmbeddings(name=source_path.name, embeddings=embeddings))
+    for path in tqdm(source_files, desc="эскизы"):
+        views = run(load_image(path), arrow_model, ocr_engine).views.crops(target_size)
+        if views:
+            sketches.append(SketchEmbeddings(name=path.name, embeddings=embed_views(embedder, views)))
     return EmbeddingDataset(sketches=sketches)
 
 
