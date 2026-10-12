@@ -8,3 +8,13 @@ wheels/
 
 # Virtual environments
 .venv
+.claude/
+# кеш артефактов этапных блокнотов
+.cache/
+data/
+runs/
+CLAUDE.md
+*/*/decisions/
+*/canon/
+*.pt
+*.npz
