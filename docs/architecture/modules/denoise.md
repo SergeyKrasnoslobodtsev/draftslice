@@ -200,6 +200,11 @@ $\lfloor y \cdot h_{mask} / h_{ink} \rfloor$ маски — целая част�
 | `models/arrows.onnx` | YOLO26n-seg, экспорт `training/export.py` |
 | `training/` | Разметка → датасет → обучение → ONNX, см. `training/README.md` |
 
+!!! warning "Модель обучена на плитках"
+    Скрипты `training/` умеют обучать и на целых листах (`make_dataset.py --no-tile`, `train.py --imgsz 1280`), но
+    рабочая модель обучена на плитках 640, и `ArrowModel` режет лист той же сеткой (см. [плитки и зоны](#плитки-и-зоны)).
+    Модель, обученная на целых листах, `ArrowModel` не рассчитана: вход сети — одна плитка.
+
 Интерфейс — как у Ultralytics: `ArrowModel` грузится один раз, вызывается на листах, возвращает `ArrowResult`
 (`mask`, `xyxy`, `conf`, `len()`, `orig_shape`). Считает onnxruntime-gpu, без CUDA — на CPU.
 
