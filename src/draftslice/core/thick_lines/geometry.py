@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import numba as nb
 import numpy as np
 
 
@@ -93,29 +94,8 @@ def fit_circle(p: np.ndarray, n_iter: int = 10, straight_px: float = 1.5) -> Cir
     Circle
         Окружность; у прямой центр nan, радиус inf, невязка 0.
     """
-    q = p.astype(np.float32)
-    o = q.mean(axis=0)
-    q = q - o
-    _, _, vt = np.linalg.svd(q, full_matrices=False)
-    if np.ptp(q @ vt[1]) <= straight_px:  # отклонение от прямой — в пределах сетки
-        return Circle(center=np.full(2, np.nan, np.float32), r=np.inf, rel_err=0.0)
-    A = np.column_stack([2 * q, np.ones(len(q), np.float32)])
-    (cx, cy, c), *_ = np.linalg.lstsq(A, (q * q).sum(axis=1), rcond=None)
-    x = np.array([cx, cy, np.sqrt(c + cx * cx + cy * cy)], np.float32)  # cx, cy, r
-    for _ in range(n_iter):
-        d = q - x[:2]
-        dist = np.hypot(d[:, 0], d[:, 1])
-        res = dist - x[2]
-        J = np.column_stack([-d / dist[:, None], -np.ones(len(q), np.float32)])
-        step, *_ = np.linalg.lstsq(J, -res, rcond=None)
-        x += step
-        if np.abs(step).max() < 1e-3:
-            break
-    d = q - x[:2]
-    r = float(x[2])
-    rel_err = float(np.sqrt(np.mean((np.hypot(d[:, 0], d[:, 1]) - r) ** 2)) / r)
-
-    return Circle(center=x[:2] + o, r=r, rel_err=rel_err)
+    c0, c1, r, rel_err = _fit_circle(p.astype(np.float64), n_iter, straight_px)
+    return Circle(center=np.array([c0, c1], np.float32), r=r, rel_err=rel_err)
 
 
 def is_arc(p: np.ndarray, c: Circle, max_err: float = 0.05, min_arc_deg: float = 30.0) -> bool:
@@ -212,3 +192,29 @@ def _arc_angle_deg(p, r):
     """Угловая длина пути на окружности радиуса r."""
     L = np.hypot(*np.diff(p.astype(np.float32), axis=0).T).sum()
     return float(np.degrees(L / r))
+
+
+@nb.njit(cache=True)
+def _fit_circle(p, n_iter, straight_px):
+    """Ядро fit_circle: Каса, затем Гаусс–Ньютон. -> (row, col, r, rel_err); прямая — nan, nan, inf, 0."""
+    q = p - np.array([p[:, 0].mean(), p[:, 1].mean()])
+    sxx, sxy, syy = (q[:, 0] * q[:, 0]).sum(), (q[:, 0] * q[:, 1]).sum(), (q[:, 1] * q[:, 1]).sum()
+    th = 0.5 * np.arctan2(2 * sxy, sxx - syy)  # главная ось
+    across = -np.sin(th) * q[:, 0] + np.cos(th) * q[:, 1]
+    if across.max() - across.min() <= straight_px:  # отклонение от прямой — в пределах сетки
+        return np.nan, np.nan, np.inf, 0.0
+    A = np.empty((len(q), 3))
+    A[:, 0], A[:, 1], A[:, 2] = 2 * q[:, 0], 2 * q[:, 1], 1.0
+    cx, cy, c = np.linalg.lstsq(A, q[:, 0] ** 2 + q[:, 1] ** 2)[0]
+    x = np.array([cx, cy, np.sqrt(c + cx * cx + cy * cy)])  # cx, cy, r
+    for _ in range(n_iter):
+        d0, d1 = q[:, 0] - x[0], q[:, 1] - x[1]
+        dist = np.hypot(d0, d1)
+        A[:, 0], A[:, 1], A[:, 2] = -d0 / dist, -d1 / dist, -1.0
+        step = np.linalg.lstsq(A, x[2] - dist)[0]
+        x += step
+        if np.abs(step).max() < 1e-3:
+            break
+    r = x[2]
+    rel_err = np.sqrt(np.mean((np.hypot(q[:, 0] - x[0], q[:, 1] - x[1]) - r) ** 2)) / r
+    return x[0] + p[:, 0].mean(), x[1] + p[:, 1].mean(), r, rel_err
