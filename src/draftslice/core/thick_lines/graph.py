@@ -58,9 +58,8 @@ def build_graph(
         путь из одной ветки. Соседние куски одной линии делят крайний пиксель.
     """
     skel = thinning(mask)
-    if prune:
-        skel = _prune_spurs(skel, dist)
-    g = _merge_close_nodes(_without_duplicates(Skeleton(skel)), dist)
+    g = _prune_spurs(skel, dist) if prune else Skeleton(skel)
+    g = _merge_close_nodes(_without_duplicates(g), dist)
     k = _dir_scale(2 * dist[skel > 0])
     links = _link_ends(g, dist, k, max_kink_deg, tol)
     t_px = thick.skeleton_thickness(g, dist)
@@ -136,7 +135,10 @@ def replace_paths(g: Skeleton, pix: list[np.ndarray]) -> Skeleton:
 
 
 def _prune_spurs(skel, dist, max_iter=10):
-    """Скелет без коротких тупиковых отростков: свободный конец, другой в узле, длина не больше толщины в узле."""
+    """
+    Граф скелета без коротких тупиковых отростков: свободный конец, другой в узле, длина не больше толщины в узле.
+    Отростки снимаются со skel на месте; граф последней итерации без снятий не собирается заново.
+    """
     for _ in range(max_iter):
         g = Skeleton(skel)
         ip, idx = g.paths.indptr, g.paths.indices
@@ -146,12 +148,12 @@ def _prune_spurs(skel, dist, max_iter=10):
         spur_a = (deg[first] == 1) & (deg[last] >= 3) & (length <= t[last])  # свободный конец в начале пути
         spur_b = (deg[last] == 1) & (deg[first] >= 3) & (length <= t[first])  # свободный конец в конце пути
         if not (spur_a | spur_b).any():
-            break
+            return g
         for p in np.flatnonzero(spur_a | spur_b):
             pix = g.path(p)
             drop = pix[:-1] if spur_a[p] else pix[1:]  # узловой пиксель остаётся
             skel[g.coordinates[drop, 0], g.coordinates[drop, 1]] = 0
-    return skel
+    return Skeleton(skel)
 
 
 def _dir_scale(t):
