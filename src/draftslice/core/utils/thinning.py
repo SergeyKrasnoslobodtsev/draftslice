@@ -52,6 +52,7 @@ def _skeletonize(img, ys, xs):
             for k in range(n):
                 y, x = ys[k], xs[k]
                 mark[k] = False
+
                 if y < 1 or x < 1 or y >= h - 1 or x >= w - 1:
                     continue
                 p2, p3, p4 = img[y - 1, x], img[y - 1, x + 1], img[y, x + 1]
