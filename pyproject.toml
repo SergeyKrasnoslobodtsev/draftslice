@@ -12,6 +12,7 @@ dependencies = [
     "onnxruntime>=1.22 ; sys_platform == 'win32' or sys_platform == 'darwin'",
     "scikit-image>=0.25.2",
     "skan>=0.13.1",
+    "numba>=0.67.0",
     "scikit-learn>=1.7.2",
     "paddleocr>=3.7.0",
     "paddlepaddle-gpu>=3.3.1 ; sys_platform == 'linux'",
