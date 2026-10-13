@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from draftslice.core.utils.checks import check_image
+from draftslice.core.utils.thinning import thinning
 
 
 @dataclass(frozen=True)
@@ -125,7 +126,7 @@ def _binarize(gray: np.ndarray) -> np.ndarray:
 def _thickness(binary: np.ndarray, top_share: float) -> float:
     """Толщина контура: среднее по самой толстой горке скелета, на которую приходится не меньше top_share, px."""
     dist = cv2.distanceTransform(binary, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
-    t = 2.0 * dist[cv2.ximgproc.thinning(binary) > 0]
+    t = 2.0 * dist[thinning(binary) > 0]
     if t.size == 0:
         raise ValueError("В маске нет краски: нечего мерить.")
     bins, cnt = np.unique(np.round(t), return_counts=True)
