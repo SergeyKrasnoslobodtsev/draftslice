@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 from scipy import sparse
 from scipy.sparse import csgraph
@@ -7,6 +6,7 @@ from skan.csr import PathGraph
 
 import draftslice.core.thick_lines.geometry as geom
 import draftslice.core.thick_lines.thickness as thick
+from draftslice.core.utils.thinning import thinning
 
 
 def build_graph(
@@ -57,7 +57,7 @@ def build_graph(
         узел; пути — цепочки соосных веток, разрезанные по толщине. Ветка, не склеенная ни с чем, —
         путь из одной ветки. Соседние куски одной линии делят крайний пиксель.
     """
-    skel = cv2.ximgproc.thinning(mask, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
+    skel = thinning(mask)
     if prune:
         skel = _prune_spurs(skel, dist)
     g = _merge_close_nodes(_without_duplicates(Skeleton(skel)), dist)
