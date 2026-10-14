@@ -13,9 +13,6 @@ Ultralytics пишет в метаданные ONNX - инференс берё�
 ниже него `infer.py --conf` ничего не найдёт. Поэтому экспорт с `conf=0.001`, а рабочий порог - в
 `infer.py`.
 
-Ultralytics при нехватке пакетов ставит их сам; здесь это выключено (`YOLO_AUTOINSTALL=false`): окружение не меняется,
-экспорт падает с сообщением, чего не хватает.
-
 Запуск:
     python training/export.py --weights runs/segment/<имя>/weights/best.pt
 """
