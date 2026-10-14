@@ -10,11 +10,25 @@ res.plot()              # лист: чистое - как в оригинале,
 res.save("out/1.png")
 res.save_views("out/views", "1", size=224)
 ```
+
+Пачка листов, по процессу на группу листов (`run_batch`): модели грузятся в каждом процессе, GPU общий.
+
+```python
+def save(path, res):  # считается в процессе-воркере, функция уровня модуля
+    return res.save(f"out/{path.stem}.png")
+
+for r in run_batch(paths, "models", save, workers=6):
+    print(r.path.name, r.error or r.value)
+```
 """
 
+import multiprocessing as mp
+import os
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -25,9 +39,9 @@ from draftslice.core.denoise.arrows import ArrowModel, ArrowResult
 from draftslice.core.denoise.sheet import Sheet
 from draftslice.core.denoise.text import clear_text
 from draftslice.core.denoise.views import Views
-from draftslice.core.io import save_image
+from draftslice.core.io import load_image, save_image
 from draftslice.core.ocr import pipeline as ocr
-from draftslice.core.ocr.engine import OCREngine
+from draftslice.core.ocr.engine import OCREngine, PaddleOCRParameters
 from draftslice.core.thick_lines import pipeline as thick_lines
 from draftslice.core.thick_lines.pipeline import Lines
 from draftslice.core.utils.checks import check_image
@@ -178,3 +192,107 @@ def run(
     arrows = arrow_model(img, conf=conf)
     sheet = denoise.run(lines, arrows.mask, t_c, polys)
     return Result(img, prep.scale, lines, arrows, sheet, Views(sheet, img, prep.scale, margin))
+
+
+@dataclass(frozen=True)
+class SheetResult:
+    """Итог одного листа пачки `run_batch`.
+
+    Attributes
+    ----------
+    path : Path
+        Лист.
+    value : Any
+        Что вернула `fn` на этом листе; `None`, если лист упал.
+    error : str | None
+        `ТипОшибки: сообщение`, если лист упал; иначе `None`.
+    """
+
+    path: Path
+    value: Any
+    error: str | None
+
+
+def run_batch(
+    paths: Iterable[Path],
+    models: str | Path,
+    fn: Callable[[Path, Result], Any],
+    workers: int = 1,
+    conf: float = 0.3,
+) -> Iterator[SheetResult]:
+    """Пачка листов: `run` и `fn` по каждому листу, в одном процессе или в workers процессах.
+
+    Каждый процесс один раз грузит модели из `models` и считает листы по одному, пока они есть. `fn` вызывается
+    в том же процессе, что считал лист: тяжёлый `Result` между процессами не передаётся, только то, что вернула
+    `fn`. Процессы стартуют через spawn (fork после инициализации CUDA и Paddle небезопасен), поэтому `fn` - функция
+    уровня модуля или `functools.partial` от неё. Потоки OpenCV делятся между процессами поровну.
+
+    Каждый процесс держит на GPU около 3.5 ГБ (OCR и стрелки); если памяти GPU не хватает, всё замедляется в разы.
+
+    Parameters
+    ----------
+    paths : Iterable[Path]
+        Листы.
+    models : str | Path
+        Папка моделей: `arrows.onnx` и модели PaddleOCR.
+    fn : Callable[[Path, Result], Any]
+        Что сделать с результатом листа: сохранить, вырезать виды. Возвращаемое значение уходит в `SheetResult.value`.
+    workers : int
+        Число процессов; 1 - в текущем процессе.
+    conf : float
+        Порог уверенности стрелок.
+
+    Returns
+    -------
+    Iterator[SheetResult]
+        По листу в порядке `paths`, по мере готовности. Ошибка листа (битый файл, сбой конвейера) не останавливает
+        остальные: она в `SheetResult.error`.
+
+    Raises
+    ------
+    ValueError
+        `workers` меньше 1.
+    """
+    if workers < 1:
+        raise ValueError(f"Некорректное число процессов: {workers=}")
+    init = (Path(models), fn, conf, workers)
+    if workers == 1:
+        _init_worker(*init)
+        try:
+            yield from map(_run_one, paths)
+        finally:
+            _ctx.clear()  # модели держат ~4 ГБ RAM и ~3.5 ГБ GPU: после пачки не нужны
+        return
+    pool = mp.get_context("spawn").Pool(workers, _init_worker, init)
+    try:
+        yield from pool.imap(_run_one, paths)
+    except BaseException:  # Ctrl+C, сбой, вызывающий бросил итерацию: процессы снимаются сразу
+        pool.terminate()
+        raise
+    else:
+        pool.close()  # штатно процессы выходят сами; terminate снял бы их SIGTERM
+    finally:
+        pool.join()
+
+
+_ctx = {}  # модели и параметры процесса: _init_worker заполняет, _run_one читает
+
+
+def _init_worker(models, fn, conf, workers):
+    """Модели - один раз на процесс; потоки OpenCV делятся между процессами."""
+    if workers > 1:
+        cv2.setNumThreads(max(1, os.cpu_count() // workers))
+    defaults = PaddleOCRParameters()
+    ocr_params = PaddleOCRParameters(
+        text_detection_model_dir=str(models / Path(defaults.text_detection_model_dir).name),
+        text_recognition_model_dir=str(models / Path(defaults.text_recognition_model_dir).name),
+    )
+    _ctx.update(arrow=ArrowModel(models / "arrows.onnx"), ocr=OCREngine(ocr_params), fn=fn, conf=conf)
+
+
+def _run_one(path):
+    try:
+        res = run(load_image(path), _ctx["arrow"], _ctx["ocr"], conf=_ctx["conf"])
+        return SheetResult(path, _ctx["fn"](path, res), None)
+    except Exception as e:  # один битый лист не должен ронять пачку
+        return SheetResult(path, None, f"{type(e).__name__}: {e}")
