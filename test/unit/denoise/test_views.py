@@ -33,6 +33,7 @@ def sheet_views():
     return Views(sheet, orig, SCALE), orig, paint
 
 
+@pytest.mark.req("VIEW-01")
 def test_views_group_view_with_its_hole_and_keep_open_piece(sheet_views):
     views, _, _ = sheet_views
 
@@ -41,6 +42,7 @@ def test_views_group_view_with_its_hole_and_keep_open_piece(sheet_views):
     assert areas == sorted(areas, reverse=True)  # от крупного к мелкому
 
 
+@pytest.mark.req("VIEW-01")
 def test_view_box_in_original_coords_with_margin(sheet_views):
     views, _, paint = sheet_views
     big = views[0]
@@ -52,6 +54,7 @@ def test_view_box_in_original_coords_with_margin(sheet_views):
     assert big.mask.shape == (y1 - y0, x1 - x0)
 
 
+@pytest.mark.req("VIEW-01")
 def test_view_mask_and_image_from_original(sheet_views):
     views, orig, paint = sheet_views
     big = views[0]
@@ -66,6 +69,7 @@ def test_view_mask_and_image_from_original(sheet_views):
     assert (big.img[~m] == 255).all()  # фон белый
 
 
+@pytest.mark.req("DUP-05")
 def test_crops_share_sheet_scale_and_are_square(sheet_views):
     views, _, _ = sheet_views
 
@@ -81,6 +85,7 @@ def test_crops_share_sheet_scale_and_are_square(sheet_views):
     assert max(np.ptp(big[0]), np.ptp(big[1])) + 1 >= 0.8 * 100
 
 
+@pytest.mark.req("DUP-06")
 def test_rotations_are_quarter_turns_of_crops(sheet_views):
     views, _, _ = sheet_views
 
@@ -106,6 +111,7 @@ def _split_frame(gap):
     return Views(Sheet(paint, g, dist, np.ones(g.n_paths, bool), T), orig, 1.0)
 
 
+@pytest.mark.req("VIEW-01")
 def test_pieces_closer_than_two_max_thicknesses_are_one_view():
     # максимальная толщина листа 2 * max(dist) = T: куски ближе 2T - один вид, дальше - разные
     assert len(_split_frame(T)) == 1

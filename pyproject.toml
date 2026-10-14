@@ -1,15 +1,18 @@
 [project]
 name = "draftslice"
-version = "0.2.0"
+version = "0.2.1"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 
 dependencies = [
     "numpy>=2.2.6",
+    "opencv-contrib-python>=4.13.0.92,<5",
     "onnxruntime-gpu>=1.22 ; sys_platform == 'linux'",
+    "onnxruntime>=1.22 ; sys_platform == 'win32' or sys_platform == 'darwin'",
     "scikit-image>=0.25.2",
     "skan>=0.13.1",
+    "numba>=0.67.0",
     "scikit-learn>=1.7.2",
     "paddleocr>=3.7.0",
     "paddlepaddle-gpu>=3.3.1 ; sys_platform == 'linux'",
@@ -50,6 +53,7 @@ required-environments = [
 ]
 # paddlex закрепляет opencv-contrib-python==4.10.0.84, а проекту нужен 4.13 (cv2.IMREAD_COLOR_RGB)
 # и contrib (cv2.ximgproc.thinning). Одна сборка cv2 на окружение - две сборки перетирают модуль.
+# override работает только в uv, поэтому 4.13 продублирован в dependencies - чтобы попасть в метаданные пакета.
 override-dependencies = ["opencv-contrib-python>=4.13.0.92,<5"]
 # sahi/ultralytics тянут opencv-python, albumentations - opencv-python-headless: это тот же cv2 без contrib,
 # при установке он затирает ximgproc. Выкидываем их, cv2 даёт только opencv-contrib-python.

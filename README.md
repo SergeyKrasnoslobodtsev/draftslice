@@ -24,11 +24,11 @@
 
 | Раздел | О чём |
 |---|---|
-| [Архитектура](docs/architecture/ARCHITECTURE.md) | Карта пакетов, типы данных, последовательность вызовов |
+| [Архитектура](docs/architecture/ARCHITECTURE.md) | Карта пакетов, типы данных, пайплайн листа `draftslice.pipeline` |
 | [`core.preprocess`](docs/architecture/modules/preprocess.md) | Серое, маска краски, нормализация масштаба |
 | [`core.ocr`](docs/architecture/modules/ocr.md) | Текст на чертеже, в том числе повёрнутый |
 | [`core.thick_lines`](docs/architecture/modules/thick_lines.md) | Граф линий, толстые и тонкие |
-| [`core.denoise`](docs/architecture/modules/denoise.md) | Стрелки, правила чистки, чистый лист и виды |
+| [`core.denoise`](docs/architecture/modules/denoise.md) | Стрелки, текст с маски краски, правила чистки, виды |
 | [Обучение модели стрелок](training/README.md) | Разметка, датасет, обучение, экспорт в ONNX, метрики |
 
 ## Установка
@@ -61,15 +61,26 @@ draftslice views data/images/1.jpg -o runs/views --size 224
 | `--conf` | `clean`, `views` | `0.3` | Порог уверенности стрелок |
 | `--plot` | `clean` | выкл. | Картинка проверки: чистое как в оригинале, снятое бледным, рамки видов |
 | `--size` | `views` | — | Сторона квадрата для ViT; без неё вид сохраняется как есть |
+| `--workers`, `-j` | `clean`, `views` | `1` | Процессов: листы параллельно, модели в каждом, GPU общий. Ошибка листа не останавливает остальные, код выхода тогда 1 |
+
+Каждый процесс держит около 3.5 ГБ GPU (OCR и стрелки) и 3–5 ГБ RAM: число процессов ограничено свободной
+памятью, а не ядрами. На 24 ГБ GPU помещается 6, если GPU больше ничем не занята. Если не хватает RAM, крупные листы
+падают с `MemoryError` (лист пропускается, остальные считаются); если GPU - всё замедляется в разы. Тот же запуск
+из Python - `draftslice.pipeline.run_batch`. Пропускная способность на 24 листах `data/drawing` (RTX 3090 Ti, 24 потока CPU): 1 процесс — 1760 листов/ч,
+4 — 4160, 6 — 4540.
+
+```bash
+draftslice clean data/images -o runs/clean --workers 6
+```
 
 
 ### Python
 
 ```python
 from draftslice.core.denoise.arrows import ArrowModel
-from draftslice.core.denoise.pipeline import run
 from draftslice.core.io import load_image
 from draftslice.core.ocr.engine import OCREngine, PaddleOCRParameters
+from draftslice.pipeline import run
 
 arrow_model = ArrowModel("models/arrows.onnx")  # модели создаются один раз на пачку листов
 ocr_engine = OCREngine(PaddleOCRParameters())
@@ -82,8 +93,8 @@ res.save("out/sheet.png")
 res.save_views("out/views", "sheet", size=224)  # out/views/sheet_0.png, sheet_1.png, ...
 ```
 
-Отдельные шаги (`preprocess`, `ocr`, `thick_lines`, правила `Sheet`) описаны в
-[документации модулей](docs/architecture/modules/denoise.md#использование).
+Порядок шагов — в [архитектуре](docs/architecture/ARCHITECTURE.md#последовательность-вызовов), отдельные шаги
+(`preprocess`, `ocr`, `thick_lines`, `denoise`) — в документации модулей.
 
 ## Модели
 

@@ -7,14 +7,14 @@
 2. `result_filtering.filter_results` - отбрасывает нетекстовый мусор и дубли одной и той же
    надписи, найденной в нескольких поворотах.
 
-`OCREngine` держит инициализированные модели PaddleOCR, поэтому создаётся и передаётся вызывающим
-кодом один раз на пачку изображений, а не пересоздаётся внутри `run()` на каждый вызов.
+`OCREngine` с загруженными моделями PaddleOCR создаётся один раз на пачку изображений и передаётся в `run()`.
 """
 
 import numpy as np
 
 from draftslice.core.ocr.engine import OCREngine, OcrResult
 from draftslice.core.ocr.result_filtering import filter_results
+from draftslice.core.utils.checks import check_image
 
 
 def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> list[OcrResult]:
@@ -22,8 +22,8 @@ def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> lis
 
     Parameters
     ----------
-    image : np.ndarray
-        Изображение чертежа (RGB).
+    image : np.ndarray[uint8]
+        Изображение чертежа RGB `(H, W, 3)`.
     engine : OCREngine
         Заранее созданный движок распознавания.
     iou_threshold : float
@@ -34,6 +34,12 @@ def run(image: np.ndarray, engine: OCREngine, iou_threshold: float = 0.3) -> lis
     -------
     list[OcrResult]
         Распознанный текст без мусора и дублей, координаты полигонов - в системе `image`.
+
+    Raises
+    ------
+    TypeError
+        `image` не `(H, W, 3)` uint8.
     """
+    check_image(image, channels=3, dtype=np.uint8)
     raw_results = engine.recognize(image)
     return filter_results(raw_results, iou_threshold=iou_threshold)

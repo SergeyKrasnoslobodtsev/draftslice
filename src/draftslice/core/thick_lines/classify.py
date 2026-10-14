@@ -165,7 +165,7 @@ def _levels(g, dist):
     level = np.empty(g.n_paths, np.float32)
     for i in range(g.n_paths):
         pix = g.path(i)
-        t, _ = junction_free(t_px[pix], g.degrees[pix])
+        t = junction_free(t_px[pix], g.degrees[pix]).t
         level[i] = np.exp(np.log(np.maximum(t, 1.0)).mean())  # среднее геометрическое: толщина мультипликативна
     return level, g.path_lengths().astype(np.float32)
 

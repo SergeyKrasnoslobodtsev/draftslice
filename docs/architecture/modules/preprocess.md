@@ -64,8 +64,9 @@ sequenceDiagram
     alt target is None
         P-->>C: Preprocessed(img, gray, binary, 1.0, None)
     else нормализация включена
-        P->>+CV: distanceTransform, thinning
-        CV-->>-P: dist, скелет
+        P->>+CV: distanceTransform
+        CV-->>-P: dist
+        P->>P: thinning (Zhang–Suen, utils.thinning)
         P->>P: _thickness: горка скелета ≥ top_share → t_c
         opt t_c < min_t
             P->>+CV: resize(gray, ×2)

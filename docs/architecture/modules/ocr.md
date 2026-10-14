@@ -12,7 +12,7 @@ from draftslice.core.ocr.pipeline import run
 engine = OCREngine(PaddleOCRParameters())  # модели грузятся один раз на пачку листов
 results = run(img, engine)                 # list[OcrResult]
 for r in results:
-    r.text, r.confidence, r.poly           # строка, уверенность, полигон (4, 2) float32
+    r.text, r.confidence, r.poly           # строка, уверенность, полигон (4, 2) float32, точки (x, y)
 ```
 
 ## Интерфейс
@@ -94,8 +94,8 @@ sequenceDiagram
     R->>+E: recognize(image)
     loop angle из params.angles
         E->>+O: rotate_image(image, angle)
-        O-->>-E: rotated, mat
-        E->>+PO: predict(rotated)
+        O-->>-E: Rotated(img, mat)
+        E->>+PO: predict(img)
         PO-->>-E: rec_polys, rec_texts, rec_scores
         E->>E: _polys_to_original(polys, mat) через M⁻¹
     end

@@ -18,3 +18,4 @@ CLAUDE.md
 */canon/
 *.pt
 *.npz
+.DS_Store

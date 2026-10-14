@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 from scipy import sparse
 from scipy.sparse import csgraph
@@ -7,6 +6,7 @@ from skan.csr import PathGraph
 
 import draftslice.core.thick_lines.geometry as geom
 import draftslice.core.thick_lines.thickness as thick
+from draftslice.core.utils.thinning import thinning
 
 
 def build_graph(
@@ -57,10 +57,9 @@ def build_graph(
         узел; пути — цепочки соосных веток, разрезанные по толщине. Ветка, не склеенная ни с чем, —
         путь из одной ветки. Соседние куски одной линии делят крайний пиксель.
     """
-    skel = cv2.ximgproc.thinning(mask, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
-    if prune:
-        skel = _prune_spurs(skel, dist)
-    g = _merge_close_nodes(_without_duplicates(Skeleton(skel)), dist)
+    skel = thinning(mask)
+    g = _prune_spurs(skel, dist) if prune else Skeleton(skel)
+    g = _merge_close_nodes(_without_duplicates(g), dist)
     k = _dir_scale(2 * dist[skel > 0])
     links = _link_ends(g, dist, k, max_kink_deg, tol)
     t_px = thick.skeleton_thickness(g, dist)
@@ -68,12 +67,12 @@ def build_graph(
     pieces = []
     for chain, _ in _build_chains(g.n_paths, links):
         pix = _chain_pix(g, chain)
-        t, spots = thick.junction_free(t_px[pix], g.degrees[pix])
+        prof = thick.junction_free(t_px[pix], g.degrees[pix])
         ends = np.cumsum([ip[p + 1] - ip[p] - 1 for p, _ in chain])  # последняя точка каждой ветки в pix
-        nodes = [0, *_branch_cuts(t, spots, ends, thick_ratio), len(pix) - 1]
+        nodes = [0, *_branch_cuts(prof.t, prof.spots, ends, thick_ratio), len(pix) - 1]
         bounds = [0]
         for a, b in zip(nodes[:-1], nodes[1:], strict=True):
-            bounds += [a + c for c in _level_cuts(t[a : b + 1], thick_ratio)] + [b]
+            bounds += [a + c for c in _level_cuts(prof.t[a : b + 1], thick_ratio)] + [b]
         pieces += [pix[a : b + 1] for a, b in zip(bounds[:-1], bounds[1:], strict=True)]
     return replace_paths(g, pieces)
 
@@ -136,7 +135,10 @@ def replace_paths(g: Skeleton, pix: list[np.ndarray]) -> Skeleton:
 
 
 def _prune_spurs(skel, dist, max_iter=10):
-    """Скелет без коротких тупиковых отростков: свободный конец, другой в узле, длина не больше толщины в узле."""
+    """
+    Граф скелета без коротких тупиковых отростков: свободный конец, другой в узле, длина не больше толщины в узле.
+    Отростки снимаются со skel на месте; граф последней итерации без снятий не собирается заново.
+    """
     for _ in range(max_iter):
         g = Skeleton(skel)
         ip, idx = g.paths.indptr, g.paths.indices
@@ -146,12 +148,12 @@ def _prune_spurs(skel, dist, max_iter=10):
         spur_a = (deg[first] == 1) & (deg[last] >= 3) & (length <= t[last])  # свободный конец в начале пути
         spur_b = (deg[last] == 1) & (deg[first] >= 3) & (length <= t[first])  # свободный конец в конце пути
         if not (spur_a | spur_b).any():
-            break
+            return g
         for p in np.flatnonzero(spur_a | spur_b):
             pix = g.path(p)
             drop = pix[:-1] if spur_a[p] else pix[1:]  # узловой пиксель остаётся
             skel[g.coordinates[drop, 0], g.coordinates[drop, 1]] = 0
-    return skel
+    return Skeleton(skel)
 
 
 def _dir_scale(t):
