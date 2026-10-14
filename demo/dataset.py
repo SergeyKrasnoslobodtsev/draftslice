@@ -6,16 +6,14 @@
 """
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 from embeddings import DinoEmbedder, embed_views
 from tqdm import tqdm
 
-from draftslice.core.denoise.arrows import ArrowModel
-from draftslice.core.io import load_image
-from draftslice.core.ocr.engine import OCREngine
-from draftslice.pipeline import run
+from draftslice.pipeline import Result, run_batch
 
 
 @dataclass(frozen=True)
@@ -49,38 +47,48 @@ class EmbeddingDataset:
 
 def build_dataset(
     source_files: list[Path],
-    arrow_model: ArrowModel,
-    ocr_engine: OCREngine,
+    models: Path,
     embedder: DinoEmbedder,
     target_size: int,
+    workers: int = 1,
 ) -> EmbeddingDataset:
     """Построить датасет эмбеддингов по списку файлов эскизов.
+
+    Эскизы чистятся `draftslice.pipeline.run_batch` в workers процессах, каждый со своими моделями стрелок и OCR;
+    эмбеддинги видов считаются в текущем процессе, пока процессы чистят следующие эскизы.
 
     Parameters
     ----------
     source_files : list[Path]
         Пути к файлам эскизов.
-    arrow_model : ArrowModel
-        Модель стрелок для `draftslice.pipeline.run`.
-    ocr_engine : OCREngine
-        Движок OCR для `draftslice.pipeline.run`.
+    models : Path
+        Папка моделей `draftslice`: `arrows.onnx` и модели PaddleOCR.
     embedder : DinoEmbedder
         Загруженная модель эмбеддингов.
     target_size : int
         Сторона квадрата вида под вход модели эмбеддинга.
+    workers : int
+        Число процессов чистки; каждый держит на GPU около 3.5 ГБ.
 
     Returns
     -------
     EmbeddingDataset
-        Эмбеддинги видов каждого эскиза в порядке `source_files`; эскиз, на котором не нашлось ни одного вида,
-        пропускается.
+        Эмбеддинги видов каждого эскиза в порядке `source_files`; эскиз, на котором не нашлось ни одного вида
+        или чистка упала, пропускается (ошибка печатается).
     """
     sketches = []
-    for path in tqdm(source_files, desc="эскизы"):
-        views = run(load_image(path), arrow_model, ocr_engine).views.crops(target_size)
-        if views:
-            sketches.append(SketchEmbeddings(name=path.name, embeddings=embed_views(embedder, views)))
+    batch = run_batch(source_files, models, partial(_crops, size=target_size), workers)
+    for r in tqdm(batch, total=len(source_files), desc="эскизы"):
+        if r.error is not None:
+            tqdm.write(f"{r.path.name}: ошибка {r.error}")
+        elif r.value:
+            sketches.append(SketchEmbeddings(name=r.path.name, embeddings=embed_views(embedder, r.value)))
     return EmbeddingDataset(sketches=sketches)
+
+
+def _crops(path: Path, res: Result, size: int) -> list[np.ndarray]:
+    """Виды эскиза квадратами под вход эмбеддера; считается в процессе чистки."""
+    return res.views.crops(size)
 
 
 def save_dataset(dataset: EmbeddingDataset, path: Path) -> None:
